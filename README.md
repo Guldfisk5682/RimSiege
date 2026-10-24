@@ -1,4 +1,4 @@
-# CeIso3dPatch
+# 3Dsiege
 
 Compatibility / patch layer for **Combat Extended** + **IsoRim (Waylith / IsoRimZ)** on RimWorld 1.7 Unstable.
 
