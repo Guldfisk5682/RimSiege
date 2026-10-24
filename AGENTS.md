@@ -1,14 +1,12 @@
-# 3Dsiege — agent notes
+# Agents on 3Dsiege
 
-## Mission
-Adapt / patch Combat Extended for IsoRim 3D (Waylith + IsoRimZ) on RimWorld 1.7 Unstable.
+## Roles
+- **Cycle (Grok Bot)**: in-game debug on TXC via GABS HTTP `127.0.0.1:8765` → RimBridge; owns project structure; queues test results to Codex; may do small fixes.
+- **Codex**: backend algorithms / Harmony patches; effort high|xhigh|max OK; reset card OK if quota empty.
 
-## Constraints
-- Prefer patches + additive features over forking CE or IsoRim.
-- Gameplay first; infrastructure is a means.
-- Prefer Spec + in-game DevMode/Quicktest over pointless smoke gates.
-- Cycle (Grok Bot) may use GABS/RimBridge on TXC; Fisk owns Codex session dispatch.
-
-## Working style
-- Long-lived Codex session preferred.
-- Record spikes (cross-layer shooting, CE 1.7, height/cover) before large rewrites.
+## Hard rules
+- Identify as Grok Bot / Codex in queue messages.
+- Reuse CE / IsoRimZ / vanilla algorithms (path, temperature, ticks, ballistics, floor bands). Do not rewrite.
+- No defensive try/catch walls; Prefer Harmony Prepare + FailSoft.
+- `main` commits must be machine-tested by Cycle.
+- OPEN design questions in `Specs/OPEN-QUESTIONS.md` — do not decide alone; leave uncommitted for Fisk.
