@@ -16,11 +16,12 @@ namespace RimSiege.Combat
     internal static class AcquisitionContext
     {
         [ThreadStatic] internal static IAttackTargetSearcher Searcher;
+        [ThreadStatic] internal static Verb_LaunchProjectileCE SightVerb;
 
         internal static bool Supported(Verb verb) => verb is Verb_LaunchProjectileCE || verb is Verb_LaunchProjectile;
 
-        internal static Verb VerbFor(Thing seer) => Searcher?.Thing == seer
-            ? Searcher.CurrentEffectiveVerb : (seer as IAttackTargetSearcher)?.CurrentEffectiveVerb;
+        internal static Verb VerbFor(Thing seer) => SightVerb?.Caster == seer ? SightVerb :
+            Searcher?.Thing == seer ? Searcher.CurrentEffectiveVerb : (seer as IAttackTargetSearcher)?.CurrentEffectiveVerb;
     }
 
     [HarmonyPatch(typeof(AttackTargetFinder), nameof(AttackTargetFinder.BestAttackTarget))]
@@ -36,10 +37,25 @@ namespace RimSiege.Combat
         private static void Finalizer(IAttackTargetSearcher __state) => AcquisitionContext.Searcher = __state;
     }
 
-    [HarmonyPatch]
-    internal static class AcquisitionRangeFramePatch
+    [HarmonyPatch(typeof(AttackTargetFinder), nameof(AttackTargetFinder.BestAttackTarget))]
+    internal static class IsoTargetSelectionPatch
     {
-        // CE's optimized picker owns candidate enumeration, validation and scoring.
+        [HarmonyPriority(Priority.Last)]
+        private static void Postfix(IAttackTargetSearcher searcher, TargetScanFlags flags, Predicate<Thing> validator,
+            float minDist, float maxDist, bool canBashDoors, bool canTakeTargetsCloserThanEffectiveMinRange,
+            bool canBashFences, bool onlyRanged, ref IAttackTarget __result)
+        {
+            if (AcquisitionContext.Supported(searcher.CurrentEffectiveVerb) && IsoFloor.HasFloors(searcher.Thing.Map))
+                IsoCombatAi.SelectTarget(searcher, flags, validator, minDist, maxDist, canBashDoors,
+                    canTakeTargetsCloserThanEffectiveMinRange, canBashFences, onlyRanged, ref __result);
+        }
+    }
+
+    [HarmonyPatch]
+    internal static class SameFloorCandidatesPatch
+    {
+        // As in ProjectZ, preserve the game's own-floor result and let its
+        // cross-floor picker compare against it, including the walk-under fallback.
         private static MethodBase TargetMethod() => AccessTools.Method(
             typeof(Verb_LaunchProjectileCE).Assembly.GetType(
                 "CombatExtended.HarmonyCE.Harmony_AttackTargetFinder+Harmony_AttackTargetFinder_BestAttackTarget"),
@@ -51,7 +67,7 @@ namespace RimSiege.Combat
             if (!AcquisitionContext.Supported(searcher.CurrentEffectiveVerb) || !IsoFloor.HasFloors(map) ||
                 IsoFloor.FloorOf(target, map) == IsoFloor.FloorOf(source, map))
                 return target.InHorDistOf(source, radius);
-            return IsoFloor.RangeDistance(source, target, map) <= radius;
+            return false;
         }
 
         private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
@@ -63,7 +79,51 @@ namespace RimSiege.Combat
                 {
                     yield return new CodeInstruction(OpCodes.Ldarg_1).MoveLabelsFrom(c).MoveBlocksFrom(c);
                     c.opcode = OpCodes.Call;
-                    c.operand = AccessTools.Method(typeof(AcquisitionRangeFramePatch), nameof(WithinRange));
+                    c.operand = AccessTools.Method(typeof(SameFloorCandidatesPatch), nameof(WithinRange));
+                }
+                yield return c;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ProjectZ.Combat.Sight), nameof(ProjectZ.Combat.Sight.Sees))]
+    internal static class IsoTargetSightPatch
+    {
+        private static bool Prefix(Thing seer, Thing target, Verb verb, Func<IntVec3, bool> validator,
+            ref bool __result, out Verb_LaunchProjectileCE __state)
+        {
+            __state = AcquisitionContext.SightVerb;
+            if (verb is not Verb_LaunchProjectileCE ce || !IsoFloor.HasFloors(seer.Map) ||
+                IsoFloor.FloorOf(seer.Position, seer.Map) == IsoFloor.FloorOf(target.Position, seer.Map))
+                return true;
+
+            // Use CE's loaded projectile and CE's range-independent cell checks.
+            // The explicit verb also preserves independent attached-turret sights.
+            AcquisitionContext.SightVerb = ce;
+            __result = ce.Projectile.projectile.flyOverhead || AttackTargetFinder.CanSee(seer, target, validator);
+            return false;
+        }
+
+        private static void Finalizer(Verb_LaunchProjectileCE __state) => AcquisitionContext.SightVerb = __state;
+    }
+
+    [HarmonyPatch]
+    internal static class IsoEmpTargetPatch
+    {
+        private static MethodBase TargetMethod() => AccessTools.Method(typeof(ProjectZ.Combat.AttackTargetFinder_Best_Patch), "Valid");
+
+        // CE's own picker removes vanilla's flesh-target exclusion for EMP.
+        private static bool OnlyMachines(Verb verb) => verb is not Verb_LaunchProjectileCE && verb.IsEMP();
+
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo emp = AccessTools.Method(typeof(VerbUtility), nameof(VerbUtility.IsEMP));
+            foreach (CodeInstruction c in instructions)
+            {
+                if (c.Calls(emp))
+                {
+                    c.opcode = OpCodes.Call;
+                    c.operand = AccessTools.Method(typeof(IsoEmpTargetPatch), nameof(OnlyMachines));
                 }
                 yield return c;
             }
@@ -100,6 +160,8 @@ namespace RimSiege.Combat
         {
             MethodInfo sight = AccessTools.Method(typeof(GenSight), nameof(GenSight.LineOfSight),
                 new[] { typeof(IntVec3), typeof(IntVec3), typeof(Map), typeof(bool), typeof(Func<IntVec3, bool>), typeof(int), typeof(int) });
+            MethodInfo sources = AccessTools.Method(typeof(ShootLeanUtility), nameof(ShootLeanUtility.LeanShootingSourcesFromTo));
+            MethodInfo destinations = AccessTools.Method(typeof(ShootLeanUtility), nameof(ShootLeanUtility.CalcShootableCellsOf));
             foreach (var c in instructions)
             {
                 if (c.Calls(sight))
@@ -109,34 +171,46 @@ namespace RimSiege.Combat
                     c.opcode = OpCodes.Call;
                     c.operand = AccessTools.Method(typeof(AcquisitionSightFramePatch), nameof(Sees));
                 }
+                else if (c.Calls(sources) || c.Calls(destinations))
+                {
+                    bool source = c.Calls(sources);
+                    c.opcode = OpCodes.Call;
+                    c.operand = AccessTools.Method(typeof(LeanQueries), source ? nameof(LeanQueries.Sources) : nameof(LeanQueries.Destinations));
+                }
                 yield return c;
             }
         }
     }
 
-    [HarmonyPatch(typeof(AttackTargetFinder), "GetShootingTargetScore")]
-    internal static class AcquisitionScoreDistancePatch
+    [HarmonyPatch]
+    internal static class CeTargetScoreDistancePatch
     {
-        private static float Distance(ref IntVec3 delta, IAttackTarget target, IAttackTargetSearcher searcher)
+        private static MethodBase TargetMethod() => AccessTools.Method(
+            typeof(Verb_LaunchProjectileCE).Assembly.GetType(
+                "CombatExtended.HarmonyCE.Harmony_AttackTargetFinder+Harmony_AttackTargetFinder_GetShootingTargetScore"),
+            "Postfix");
+
+        // ProjectZ.Score already replaces the vanilla flat-distance penalty.
+        // Only CE's additional score terms still need their band-space distances lifted.
+        private static float Distance(IntVec3 from, IntVec3 to, IAttackTargetSearcher searcher)
         {
             Map map = searcher.Thing.Map;
             if (!AcquisitionContext.Supported(searcher.CurrentEffectiveVerb) || !IsoFloor.HasFloors(map) ||
-                IsoFloor.FloorOf(target.Thing.Position, map) == IsoFloor.FloorOf(searcher.Thing.Position, map))
-                return delta.LengthHorizontal;
-            return IsoFloor.Distance3D(searcher.Thing.Position, target.Thing.Position, map);
+                IsoFloor.FloorOf(from, map) == IsoFloor.FloorOf(to, map))
+                return from.DistanceTo(to);
+            return IsoFloor.Distance3D(from, to, map);
         }
 
         private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
         {
-            MethodInfo distance = AccessTools.PropertyGetter(typeof(IntVec3), nameof(IntVec3.LengthHorizontal));
+            MethodInfo distance = AccessTools.Method(typeof(IntVec3Utility), nameof(IntVec3Utility.DistanceTo), new[] { typeof(IntVec3), typeof(IntVec3) });
             foreach (var c in instructions)
             {
                 if (c.Calls(distance))
                 {
-                    yield return new CodeInstruction(OpCodes.Ldarg_0).MoveLabelsFrom(c).MoveBlocksFrom(c);
-                    yield return new CodeInstruction(OpCodes.Ldarg_1);
+                    yield return new CodeInstruction(OpCodes.Ldarg_1).MoveLabelsFrom(c).MoveBlocksFrom(c);
                     c.opcode = OpCodes.Call;
-                    c.operand = AccessTools.Method(typeof(AcquisitionScoreDistancePatch), nameof(Distance));
+                    c.operand = AccessTools.Method(typeof(CeTargetScoreDistancePatch), nameof(Distance));
                 }
                 yield return c;
             }

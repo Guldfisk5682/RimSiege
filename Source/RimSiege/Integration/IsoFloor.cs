@@ -16,6 +16,8 @@ namespace RimSiege.Integration
 
         public static IntVec3 CellOnFloor(IntVec3 ground, int floor, Map map) => ProjectZ.Api.CellOnFloor(ground, floor, map);
 
+        internal static IntVec3 OnFloorOf(IntVec3 cell, IntVec3 like, Map map) => ProjectZ.Combat.Heights.OnFloorOf(cell, like, map);
+
         public static float StoreyHeight => ProjectZ.Api.StoreyHeight;
 
         public static float Distance3D(IntVec3 from, IntVec3 to, Map map) => ProjectZ.Api.Distance3D(from, to, map);

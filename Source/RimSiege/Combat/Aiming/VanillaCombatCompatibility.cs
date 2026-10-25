@@ -127,27 +127,6 @@ namespace RimSiege.Combat.Aiming
         private static void Postfix(ref ShootLine __instance, IntVec3 __state) => IsoVanillaCombat.EndMiss(ref __instance, __state);
     }
 
-    [HarmonyPatch(typeof(CastPositionFinder), nameof(CastPositionFinder.TryFindCastPosition))]
-    internal static class NativeCastPositionPatch
-    {
-        private static bool Prefix(CastPositionRequest newReq, out IntVec3 dest, ref bool __result,
-            out (bool ran, IntVec3 spot) __state)
-        {
-            dest = IntVec3.Invalid;
-            __state = (false, IntVec3.Invalid);
-            return newReq.verb is not Verb_LaunchProjectile ||
-                IsoVanillaCombat.CastPosition(newReq, out dest, ref __result, out __state);
-        }
-
-        [HarmonyPriority(Priority.Last)]
-        private static void Postfix(CastPositionRequest newReq, ref IntVec3 dest, ref bool __result,
-            (bool ran, IntVec3 spot) __state)
-        {
-            if (newReq.verb is Verb_LaunchProjectile)
-                IsoVanillaCombat.CastPositionResult(newReq, ref dest, ref __result, __state);
-        }
-    }
-
     [HarmonyPatch(typeof(CompTurretGun), nameof(CompTurretGun.CompTick))]
     internal static class AttachedTurretDirectionPatch
     {

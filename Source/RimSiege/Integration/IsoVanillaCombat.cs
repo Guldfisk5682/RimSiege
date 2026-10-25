@@ -3,7 +3,6 @@ using System;
 using RimWorld;
 using UnityEngine;
 using Verse;
-using Verse.AI;
 
 namespace RimSiege.Integration
 {
@@ -49,11 +48,5 @@ namespace RimSiege.Integration
             ShootLine_MissWild_Patch.Prefix(ref line, map, out source);
 
         internal static void EndMiss(ref ShootLine line, IntVec3 source) => ShootLine_MissWild_Patch.Postfix(ref line, source);
-
-        internal static bool CastPosition(CastPositionRequest request, out IntVec3 destination, ref bool result,
-            out (bool ran, IntVec3 spot) state) => CastPositionFinder_Patch.Prefix(request, out destination, ref result, out state);
-
-        internal static void CastPositionResult(CastPositionRequest request, ref IntVec3 destination, ref bool result,
-            (bool ran, IntVec3 spot) state) => CastPositionFinder_Patch.Postfix(request, ref destination, ref result, state);
     }
 }
