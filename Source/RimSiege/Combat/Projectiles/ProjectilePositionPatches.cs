@@ -14,12 +14,26 @@ namespace RimSiege.Combat.Projectiles
     [HarmonyPatch]
     internal static class LaunchFramePatch
     {
-        private static MethodBase TargetMethod() => AccessTools.GetDeclaredMethods(typeof(ProjectileCE)).Single(m => m.Name == "Launch" && m.GetParameters().Length == 8);
+        private static IEnumerable<MethodBase> TargetMethods() => CeAccess.Methods(typeof(ProjectileCE), "Launch")
+            .Where(m => (m.GetParameters().Length == 3 || m.GetParameters().Length == 8) &&
+                m.GetParameters()[1].ParameterType.FullName == typeof(Vector2).FullName);
         private static void Prefix(ProjectileCE __instance, ref Vector2 origin)
         {
             if (!IsoFloor.HasFloors(__instance.Map)) return;
             Vector3 g = FloorCoordinates.Ground(new Vector3(origin.x, 0f, origin.y), __instance.Map);
             origin = new Vector2(g.x, g.z);
+        }
+    }
+
+    [HarmonyPatch]
+    internal static class ThrownOriginFramePatch
+    {
+        private static IEnumerable<MethodBase> TargetMethods() => CeAccess.Methods(typeof(ProjectileCE), "Throw");
+
+        private static void Prefix(ProjectileCE __instance, ref Vector3 origin)
+        {
+            if (IsoFloor.HasFloors(__instance.Map))
+                origin = FloorCoordinates.Ground(origin, __instance.Map);
         }
     }
 

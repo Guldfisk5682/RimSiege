@@ -2,7 +2,7 @@
 
 Combat Extended compatibility for IsoRim Waylith and IsoRimZ on RimWorld 1.7 Unstable.
 
-The compatibility layer adapts floor coordinates, aiming, target acquisition, projectile collisions and projectile drawing. Combat Extended retains its ballistics, cover checks and damage algorithms. Special weapons, including mortars and cluster rockets, are still pending adaptation and validation.
+The compatibility layer adapts floor coordinates, aiming, target acquisition, projectile collisions and projectile drawing. Version 0.2 adds cross-floor adaptation for explosive and incendiary effects, fragments, indirect fire, the Diabolus main cannon and mechanoid attached turrets. Combat Extended retains its ballistics, cover checks and damage algorithms; native weapons reuse IsoRimZ's combat adapters.
 
 Load after Harmony, Combat Extended, IsoRim Waylith and IsoRimZ.
 

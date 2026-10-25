@@ -34,5 +34,26 @@ namespace RimSiege.Combat.Geometry
             ? IsoFloor.GroundRect(map).Contains(p.ToIntVec3()) : p.InBounds(map);
 
         public static bool InBoundsRef(ref Vector3 p, Map map) => InBounds(p, map);
+
+        // A continuous CE point queried in the map band of an actual contact.
+        public static IntVec3 ContactCell(Vector3 point, IntVec3 anchor, Map map)
+        {
+            if (!IsoFloor.HasFloors(map)) return point.ToIntVec3();
+            IntVec3 ground = IsoFloor.GroundCellOf(point.ToIntVec3(), map);
+            if (!ground.IsValid) return IntVec3.Invalid;
+            ground.y = 0;
+            return IsoFloor.CellOnFloor(ground, IsoFloor.FloorOf(anchor, map), map);
+        }
+
+        public static Vector3 OnBand(Vector3 ground, IntVec3 anchor, Map map)
+        {
+            IntVec3 cell = IsoFloor.GroundCellOf(anchor, map);
+            ground.z += anchor.z - cell.z;
+            ground.y = 0f;
+            return ground;
+        }
+
+        public static IntVec3 GroundPosition(Thing thing) => IsoFloor.HasFloors(thing.Map)
+            ? IsoFloor.GroundCellOf(thing.Position, thing.Map) : thing.Position;
     }
 }

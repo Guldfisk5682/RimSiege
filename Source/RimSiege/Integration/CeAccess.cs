@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using System.Collections;
+using System.Linq;
+using System.Reflection;
 using System;
 using CombatExtended;
 using HarmonyLib;
@@ -30,5 +33,20 @@ namespace RimSiege.Integration
 
         internal static readonly CellSight CanHitCell = AccessTools.MethodDelegate<CellSight>(
             AccessTools.Method(typeof(Verb_LaunchProjectileCE), "CanHitCellFromCellIgnoringRange"));
+
+        internal static readonly AccessTools.StructFieldRef<CollisionVertical, FloatRange> VerticalRange =
+            AccessTools.StructFieldRefAccess<CollisionVertical, FloatRange>("heightRange");
+
+        internal delegate IEnumerator FragmentRoutine(Vector3 position, Map map, float height, Thing instigator,
+            ThingDefCountClass fragment, float speed, float shadowChance, FloatRange elevation, FloatRange rotation,
+            float minimumCollisionDistance, bool canTargetSelf);
+
+        internal static readonly FragmentRoutine Fragments = AccessTools.MethodDelegate<FragmentRoutine>(
+            AccessTools.Method(typeof(CompFragments), nameof(CompFragments.FragRoutine)));
+
+        internal static IEnumerable<MethodBase> Methods(Type baseType, params string[] names) =>
+            GenTypes.AllTypes.Where(t => !t.ContainsGenericParameters && baseType.IsAssignableFrom(t))
+                .SelectMany(AccessTools.GetDeclaredMethods)
+                .Where(m => !m.IsStatic && !m.IsAbstract && names.Contains(m.Name));
     }
 }

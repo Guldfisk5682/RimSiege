@@ -1,4 +1,5 @@
 using Verse;
+using System.Collections.Generic;
 
 namespace RimSiege.Integration
 {
@@ -34,5 +35,13 @@ namespace RimSiege.Integration
         public static bool PlaneSolid(IntVec3 ground, int level, Map map) => ProjectZ.Column.PlaneSolid(ground, level, map);
 
         public static bool FloorAt(IntVec3 ground, int level, Map map) => ProjectZ.Column.FloorAt(ground, level, map);
+
+        internal static List<IntVec3> ExplosionCells(IEnumerable<IntVec3> cells, IntVec3 center, Map map,
+            float radius, FloatRange? angle) => ProjectZ.Combat.Explosions3D.CellsToHit(
+                cells, center, map, radius, angle, ProjectZ.ProjectZ.Annex(map));
+
+        internal static int FirstRow(Map map, int floor) => ProjectZ.Levels.RowMin(map, floor);
+
+        internal static int LastRow(Map map, int floor) => ProjectZ.Levels.RowMax(map, floor);
     }
 }

@@ -13,6 +13,29 @@ using Verse;
 
 namespace RimSiege.Combat
 {
+    internal static class AcquisitionContext
+    {
+        [ThreadStatic] internal static IAttackTargetSearcher Searcher;
+
+        internal static bool Supported(Verb verb) => verb is Verb_LaunchProjectileCE || verb is Verb_LaunchProjectile;
+
+        internal static Verb VerbFor(Thing seer) => Searcher?.Thing == seer
+            ? Searcher.CurrentEffectiveVerb : (seer as IAttackTargetSearcher)?.CurrentEffectiveVerb;
+    }
+
+    [HarmonyPatch(typeof(AttackTargetFinder), nameof(AttackTargetFinder.BestAttackTarget))]
+    internal static class AcquisitionContextPatch
+    {
+        [HarmonyPriority(Priority.First)]
+        private static void Prefix(IAttackTargetSearcher searcher, out IAttackTargetSearcher __state)
+        {
+            __state = AcquisitionContext.Searcher;
+            AcquisitionContext.Searcher = searcher;
+        }
+
+        private static void Finalizer(IAttackTargetSearcher __state) => AcquisitionContext.Searcher = __state;
+    }
+
     [HarmonyPatch]
     internal static class AcquisitionRangeFramePatch
     {
@@ -25,7 +48,7 @@ namespace RimSiege.Combat
         private static bool WithinRange(ref IntVec3 target, IntVec3 source, float radius, IAttackTargetSearcher searcher)
         {
             Map map = searcher.Thing.Map;
-            if (searcher.CurrentEffectiveVerb is not Verb_LaunchProjectileCE || !IsoFloor.HasFloors(map) ||
+            if (!AcquisitionContext.Supported(searcher.CurrentEffectiveVerb) || !IsoFloor.HasFloors(map) ||
                 IsoFloor.FloorOf(target, map) == IsoFloor.FloorOf(source, map))
                 return target.InHorDistOf(source, radius);
             return IsoFloor.RangeDistance(source, target, map) <= radius;
@@ -55,9 +78,12 @@ namespace RimSiege.Combat
         private static bool Sees(IntVec3 start, IntVec3 end, Map map, bool skipFirstCell,
             Func<IntVec3, bool> validator, int halfXOffset, int halfZOffset, Thing seer, Thing target)
         {
-            var verb = (seer as IAttackTargetSearcher)?.CurrentEffectiveVerb as Verb_LaunchProjectileCE;
-            if (verb == null || !IsoFloor.HasFloors(map) || IsoFloor.FloorOf(start, map) == IsoFloor.FloorOf(end, map))
+            Verb effective = AcquisitionContext.VerbFor(seer);
+            if (!AcquisitionContext.Supported(effective) || !IsoFloor.HasFloors(map) || IsoFloor.FloorOf(start, map) == IsoFloor.FloorOf(end, map))
                 return GenSight.LineOfSight(start, end, map, skipFirstCell, validator, halfXOffset, halfZOffset);
+
+            if (effective is not Verb_LaunchProjectileCE verb)
+                return IsoVanillaCombat.Sight(start, end, map, target.def.Fillage == FillCategory.Full, validator);
 
             Vector3 source = FloorCoordinates.Ground(start.ToVector3Shifted(), start, map);
             source.y = verb.ShotHeight;
@@ -94,7 +120,7 @@ namespace RimSiege.Combat
         private static float Distance(ref IntVec3 delta, IAttackTarget target, IAttackTargetSearcher searcher)
         {
             Map map = searcher.Thing.Map;
-            if (searcher.CurrentEffectiveVerb is not Verb_LaunchProjectileCE || !IsoFloor.HasFloors(map) ||
+            if (!AcquisitionContext.Supported(searcher.CurrentEffectiveVerb) || !IsoFloor.HasFloors(map) ||
                 IsoFloor.FloorOf(target.Thing.Position, map) == IsoFloor.FloorOf(searcher.Thing.Position, map))
                 return delta.LengthHorizontal;
             return IsoFloor.Distance3D(searcher.Thing.Position, target.Thing.Position, map);
