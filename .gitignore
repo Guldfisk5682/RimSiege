@@ -5,3 +5,5 @@ Assemblies/
 *.dll
 *.pdb
 .vs/
+/1.7/Assemblies/
+/.local/

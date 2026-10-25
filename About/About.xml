@@ -6,23 +6,26 @@
   <supportedVersions>
     <li>1.7</li>
   </supportedVersions>
-  <description>CE × IsoRimZ cross-floor combat bridge for RimWorld Unstable 1.7. Reuses IsoRimZ floor API and CE ballistics; does not reimplement pathfinding / temperature / tick cores.</description>
   <modDependencies>
     <li>
       <packageId>brrainz.harmony</packageId>
       <displayName>Harmony</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
     </li>
     <li>
       <packageId>CETeam.CombatExtended</packageId>
       <displayName>Combat Extended</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2890901044</steamWorkshopUrl>
     </li>
     <li>
       <packageId>Peren.IsoRim17</packageId>
       <displayName>IsoRim Waylith</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/3819577715</steamWorkshopUrl>
     </li>
     <li>
       <packageId>Peren.IsoRimProjectZ</packageId>
       <displayName>IsoRimZ</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/3824503834</steamWorkshopUrl>
     </li>
   </modDependencies>
   <loadAfter>
@@ -31,4 +34,5 @@
     <li>Peren.IsoRim17</li>
     <li>Peren.IsoRimProjectZ</li>
   </loadAfter>
+  <description>Combat Extended compatibility for IsoRim Waylith and IsoRimZ.</description>
 </ModMetaData>

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <RootNamespace>RimSiege</RootNamespace>
+    <AssemblyName>RimSiege</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <OutputPath>../../1.7/Assemblies/</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <DebugType>embedded</DebugType>
+    <Optimize>true</Optimize>
+    <RimWorldDir Condition="'$(RimWorldDir)' == ''">$(RIMWORLD_DIR)</RimWorldDir>
+    <WorkshopDir Condition="'$(WorkshopDir)' == ''">$(RimWorldDir)/../../workshop/content/294100</WorkshopDir>
+    <HarmonyPath Condition="'$(HarmonyPath)' == ''">$(WorkshopDir)/2009463077/1.7/Assemblies/0Harmony.dll</HarmonyPath>
+    <CombatExtendedPath Condition="'$(CombatExtendedPath)' == ''">$(WorkshopDir)/2890901044/Assemblies/CombatExtended.dll</CombatExtendedPath>
+    <IsoRimPath Condition="'$(IsoRimPath)' == ''">$(WorkshopDir)/3819577715/1.7/Assemblies/IsoRim.dll</IsoRimPath>
+    <ProjectZPath Condition="'$(ProjectZPath)' == ''">$(WorkshopDir)/3824503834/1.7/Assemblies/IsoRimProjectZ.dll</ProjectZPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp" HintPath="$(RimWorldDir)/Assembly-CSharp.dll" Private="false" />
+    <Reference Include="UnityStubs" HintPath="$(RimWorldDir)/UnityStubs.dll" Private="false" />
+    <Reference Include="Waylith" HintPath="$(RimWorldDir)/Waylith.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(HarmonyPath)" Private="false" />
+    <Reference Include="CombatExtended" HintPath="$(CombatExtendedPath)" Private="false" />
+    <Reference Include="IsoRim" HintPath="$(IsoRimPath)" Private="false" />
+    <Reference Include="IsoRimProjectZ" HintPath="$(ProjectZPath)" Private="false" />
+  </ItemGroup>
+</Project>
