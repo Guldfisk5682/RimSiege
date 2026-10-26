@@ -14,7 +14,10 @@ namespace RimSiege.Combat.Aiming
             Map map = verb.Caster.Map;
             if (!IsoFloor.HasFloors(map))
                 return GenSightCE.AllPointsOnLineOfSight(from, to);
-            float target = CombatHeights.Base(from, map) + new CollisionVertical(actualTarget.Thing).HeightRange.Average;
+            float target = !verb.Projectile.projectile.flyOverhead &&
+                SiegeLadderGeometry.TryGet(actualTarget.Thing, out SiegeLadderShape ladder)
+                ? ladder.AimPoint(verb.Caster.Position).y
+                : CombatHeights.Base(from, map) + new CollisionVertical(actualTarget.Thing).HeightRange.Average;
             return AtHeights(from, to, map, target, verb.ShotHeight);
         }
 

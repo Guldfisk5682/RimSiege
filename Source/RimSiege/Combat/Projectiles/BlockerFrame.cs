@@ -11,8 +11,16 @@ namespace RimSiege.Combat.Projectiles
     // real band cells; continuous segment callbacks keep CE-space endpoints.
     internal static class BlockerFrame
     {
-        public static Vector3 Center(Thing thing)
+        public static Vector3 Center(Thing thing, ProjectileCE projectile)
         {
+            if (SiegeLadderGeometry.TryGet(thing, out SiegeLadderShape ladder))
+            {
+                // CE already accepted this candidate's bounds. Use that actual
+                // ray contact for shields, rather than a line down to the foot.
+                Ray ray = CeAccess.ProjectileRay(projectile);
+                ladder.Bounds.IntersectRay(ray, out float distance);
+                return ray.GetPoint(distance);
+            }
             Vector3 center = FloorCoordinates.TrueCenter(thing);
             if (IsoFloor.HasFloors(thing.Map))
                 center.y += CombatHeights.Base(thing.Position, thing.Map);

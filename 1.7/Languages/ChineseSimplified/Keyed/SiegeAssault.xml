@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+  <RS_EnhancedAssault>增强攻城行为</RS_EnhancedAssault>
+  <RS_EnhancedAssaultDescription>开启后生成的普通袭击会携带有限梯具，并接替拾取掉落的梯具；没有现成通路时优先架梯，无法架梯时继续破门拆墙。已有通路和特殊袭击策略保持原有行为。</RS_EnhancedAssaultDescription>
+  <RS_LadderCarrier>〔架梯手〕</RS_LadderCarrier>
+</LanguageData>

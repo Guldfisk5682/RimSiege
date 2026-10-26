@@ -12,3 +12,7 @@
 - Production code lives in `Source/RimSiege`: external bindings in `Integration`, combat geometry, aiming and projectiles in `Combat`.
 - Experiments, fixtures, specifications and their evidence stay under ignored `.local/`; they must not enter the production tree.
 - Leave unresolved major design decisions uncommitted for Fisk.
+
+## Branch synchronization
+- After each completed update to `main`, merge `main` into `work/weapon-render-compat`.
+- Keep the temporary CE weapon-rendering patch exclusively on `work/weapon-render-compat`; do not merge or cherry-pick that patch into `main`.

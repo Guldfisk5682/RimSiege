@@ -21,13 +21,25 @@ namespace RimSiege.Combat.Geometry
         public static Vector3 TrueCenter(Thing thing)
         {
             Vector3 p = thing.TrueCenter();
-            return IsoFloor.HasFloors(thing.Map) ? Ground(p, thing.Position, thing.Map) : p;
+            return Center(p, thing);
         }
 
         public static Vector3 DrawPos(Thing thing)
         {
             Vector3 p = thing.DrawPos;
-            return IsoFloor.HasFloors(thing.Map) ? Ground(p, thing.Position, thing.Map) : p;
+            return Center(p, thing);
+        }
+
+        private static Vector3 Center(Vector3 point, Thing thing)
+        {
+            if (!IsoFloor.HasFloors(thing.Map)) return point;
+            point = Ground(point, thing.Position, thing.Map);
+            if (SiegeLadderGeometry.TryGet(thing, out SiegeLadderShape ladder))
+            {
+                point.x = ladder.Bounds.center.x;
+                point.z = ladder.Bounds.center.z;
+            }
+            return point;
         }
 
         public static bool InBounds(Vector3 p, Map map) => IsoFloor.HasFloors(map)

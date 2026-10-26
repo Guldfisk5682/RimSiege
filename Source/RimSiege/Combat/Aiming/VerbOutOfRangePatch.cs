@@ -16,7 +16,7 @@ namespace RimSiege.Combat.Aiming
         private static bool Prefix(Verb __instance, IntVec3 root, LocalTargetInfo targ, CellRect occupiedRect, ref bool __result)
         {
             // Only CE ranged verbs use this floor-aware range adapter.
-            if (!(__instance is Verb_LaunchProjectileCE))
+            if (!(__instance is Verb_LaunchProjectileCE ce))
                 return true;
 
             Map map = __instance.Caster?.Map;
@@ -24,9 +24,13 @@ namespace RimSiege.Combat.Aiming
                 return true;
 
             IntVec3 targetCell = targ.Cell;
+            SiegeLadderShape ladder = default;
+            bool ladderTarget = !ce.Projectile.projectile.flyOverhead &&
+                SiegeLadderGeometry.TryGet(targ.Thing, out ladder);
+            if (ladderTarget) targetCell = ladder.RangeCell(root);
             int ks = IsoFloor.FloorOf(root, map);
             int kt = IsoFloor.FloorOf(targetCell, map);
-            if (ks < 0 || kt < 0 || ks == kt)
+            if (ks < 0 || kt < 0 || (ks == kt && !ladderTarget))
                 return true;
 
             float min = __instance.verbProps.EffectiveMinRange(targ, __instance.Caster);
@@ -51,10 +55,12 @@ namespace RimSiege.Combat.Aiming
             Map map = __instance.Caster.Map;
             if (__result || report != "CE_BlockedMaxRange".Translate().ToString() || !IsoFloor.HasFloors(map) ||
                 IsoFloor.FloorOf(root, map) == IsoFloor.FloorOf(targ.Cell, map)) return;
+            IntVec3 targetCell = !__instance.Projectile.projectile.flyOverhead &&
+                SiegeLadderGeometry.TryGet(targ.Thing, out SiegeLadderShape ladder) ? ladder.RangeCell(root) : targ.Cell;
             // The failed-line report still uses raw band distance in CE. Keep
             // its other failure reasons, and correct this misleading range label.
-            if (IsoFloor.RangeDistance(root, targ.Cell, map) <= __instance.EffectiveRange &&
-                IsoFloor.Distance3D(root, targ.Cell, map) >= __instance.verbProps.EffectiveMinRange(targ, __instance.Caster))
+            if (IsoFloor.RangeDistance(root, targetCell, map) <= __instance.EffectiveRange &&
+                IsoFloor.Distance3D(root, targetCell, map) >= __instance.verbProps.EffectiveMinRange(targ, __instance.Caster))
                 report = "CE_NoLoS".Translate();
         }
     }
