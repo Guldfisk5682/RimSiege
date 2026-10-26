@@ -28,6 +28,11 @@ namespace RimSiege.Combat.Aiming
             IntVec3 targetLoc, Thing targetThing, out SightRay sight)
         {
             Vector3 endpoint = origin + direction;
+            if (SiegeLadderGeometry.TryGet(targetThing, out SiegeLadderShape ladder))
+            {
+                endpoint = ladder.AimPoint(verb.Caster.Position);
+                direction = endpoint - origin;
+            }
             // Thing targets already went through CE's native target-height/lean
             // construction and our frame adapters. Cell targets still need lifting.
             if (targetThing == null && IsoFloor.HasFloors(verb.Caster.Map))
@@ -98,7 +103,10 @@ namespace RimSiege.Combat.Aiming
                 return CeAccess.Points(from, to);
             IntVec3 mapTarget = to.ToIntVec3();
             to = FloorCoordinates.Ground(to, map);
-            to.y = CombatHeights.Base(mapTarget, map) + new CollisionVertical(targetThing).Max;
+            if (SiegeLadderGeometry.TryGet(targetThing, out SiegeLadderShape ladder))
+                to = ladder.AimPoint(verb.Caster.Position);
+            else
+                to.y = CombatHeights.Base(mapTarget, map) + new CollisionVertical(targetThing).Max;
             return SightQueries.Cells(from, mapTarget.ToVector3Shifted(), new SightRay(from, to, verb, mapTarget));
         }
     }

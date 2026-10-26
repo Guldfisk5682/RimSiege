@@ -23,6 +23,8 @@ namespace RimSiege.Integration
         internal static readonly AccessTools.FieldRef<ProjectileCE, Vector3> Last = AccessTools.FieldRefAccess<ProjectileCE, Vector3>("LastPos");
         internal static readonly Action<ProjectileCE, Vector3> SetExact = AccessTools.MethodDelegate<Action<ProjectileCE, Vector3>>(AccessTools.PropertySetter(typeof(ProjectileCE), "ExactPosition"));
         internal static readonly Func<ProjectileCE, IntVec3, bool> CheckCell = AccessTools.MethodDelegate<Func<ProjectileCE, IntVec3, bool>>(AccessTools.Method(typeof(ProjectileCE), "CheckCellForCollision"));
+        internal static readonly Func<ProjectileCE, Ray> ProjectileRay = AccessTools.MethodDelegate<Func<ProjectileCE, Ray>>(
+            AccessTools.PropertyGetter(typeof(ProjectileCE), "ShotLine"));
         internal static readonly Action<ProjectileCE, Thing> Impact = AccessTools.MethodDelegate<Action<ProjectileCE, Thing>>(AccessTools.Method(typeof(ProjectileCE), "Impact"));
         internal static readonly AccessTools.FieldRef<ShiftVecReport, Vector2> ReportSource = AccessTools.FieldRefAccess<ShiftVecReport, Vector2>("shotSource");
         internal static readonly AccessTools.FieldRef<ProjectileCE, int> ShotLineTick = AccessTools.FieldRefAccess<ProjectileCE, int>("lastShotLine");

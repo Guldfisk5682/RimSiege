@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <ThingDef ParentName="ResourceBase">
+    <defName>RS_LadderKit</defName>
+    <label>folded assault ladder</label>
+    <description>A portable ladder kit. Raiders deploy it as a ladder or a mechanoid lift. One kit is consumed when deployment succeeds.</description>
+    <thingClass>RimSiege.Raids.LadderKit</thingClass>
+    <graphicData>
+      <texPath>ProjectZ/SiegeLadder</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+      <drawSize>(0.8,0.8)</drawSize>
+    </graphicData>
+    <stackLimit>1</stackLimit>
+    <statBases>
+      <MaxHitPoints>60</MaxHitPoints>
+      <Mass>2</Mass>
+      <Bulk>4</Bulk>
+      <MarketValue>20</MarketValue>
+      <Flammability>1</Flammability>
+    </statBases>
+  </ThingDef>
+</Defs>

@@ -12,6 +12,11 @@ namespace RimSiege.Combat.Geometry
         private static void Postfix(Thing thing, ref Bounds __result)
         {
             if (thing == null || !IsoFloor.HasFloors(thing.Map)) return;
+            if (SiegeLadderGeometry.TryGet(thing, out SiegeLadderShape ladder))
+            {
+                __result = ladder.Bounds;
+                return;
+            }
             Vector3 center = FloorCoordinates.Ground(__result.center, thing.Position, thing.Map);
             center.y += CombatHeights.Base(thing.Position, thing.Map);
             __result.center = center;

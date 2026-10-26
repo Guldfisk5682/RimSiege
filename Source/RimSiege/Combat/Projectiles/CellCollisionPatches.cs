@@ -45,6 +45,7 @@ namespace RimSiege.Combat.Projectiles
                     // Capture the full CE-space endpoint before ToIntVec3 loses
                     // its fractional height. This local belongs to this call,
                     // including when a registered callback re-enters CE.
+                    yield return new CodeInstruction(OpCodes.Ldarg_0).MoveLabelsFrom(c).MoveBlocksFrom(c);
                     c.opcode = OpCodes.Call;
                     c.operand = AccessTools.Method(typeof(BlockerFrame), nameof(BlockerFrame.Center));
                     yield return c;

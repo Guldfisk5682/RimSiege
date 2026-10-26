@@ -34,6 +34,14 @@ namespace RimSiege.Combat.Aiming
             if (map == null || !IsoFloor.HasFloors(map))
                 return;
 
+            if (!__instance.Projectile.projectile.flyOverhead &&
+                SiegeLadderGeometry.TryGet(target.Thing, out SiegeLadderShape ladder))
+            {
+                __result = ladder.AimPoint(__instance.Caster.Position).y +
+                    ((__instance.Projectile.projectile as ProjectilePropertiesCE)?.aimHeightOffset ?? 0f);
+                return;
+            }
+
             IntVec3 cell = target.HasThing ? target.Thing.Position : target.Cell;
             int floor = IsoFloor.FloorOf(cell, map);
             if (floor <= 0)

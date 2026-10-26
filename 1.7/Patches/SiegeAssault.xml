@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+  <Operation Class="PatchOperationInsert">
+    <xpath>Defs/DutyDef[defName="AssaultColony"]/thinkNode/subNodes/li[@Class="JobGiver_AIFightEnemies"]</xpath>
+    <order>Prepend</order>
+    <value>
+      <li Class="RimSiege.Raids.ThinkNode_ConditionalLadderCarrier">
+        <subNodes>
+          <li Class="RimSiege.Raids.JobGiver_SiegeApproach" />
+        </subNodes>
+      </li>
+    </value>
+  </Operation>
+  <Operation Class="PatchOperationInsert">
+    <xpath>Defs/DutyDef[defName="AssaultColony"]/thinkNode/subNodes/li[@Class="JobGiver_AITrashColonyClose"]</xpath>
+    <order>Prepend</order>
+    <value>
+      <li Class="RimSiege.Raids.JobGiver_SiegeApproach" />
+    </value>
+  </Operation>
+</Patch>
