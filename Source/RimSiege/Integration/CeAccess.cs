@@ -37,6 +37,14 @@ namespace RimSiege.Integration
         internal static readonly AccessTools.StructFieldRef<CollisionVertical, FloatRange> VerticalRange =
             AccessTools.StructFieldRefAccess<CollisionVertical, FloatRange>("heightRange");
 
+        internal static FieldInfo[] VerbClosureOwner(Type closure)
+        {
+            FieldInfo owner = AccessTools.Field(closure, "<>4__this");
+            if (owner != null) return new[] { owner };
+            FieldInfo locals = AccessTools.GetDeclaredFields(closure).First(f => f.Name.StartsWith("CS$<>8__locals"));
+            return new[] { locals, AccessTools.Field(locals.FieldType, "<>4__this") };
+        }
+
         internal delegate IEnumerator FragmentRoutine(Vector3 position, Map map, float height, Thing instigator,
             ThingDefCountClass fragment, float speed, float shadowChance, FloatRange elevation, FloatRange rotation,
             float minimumCollisionDistance, bool canTargetSelf);

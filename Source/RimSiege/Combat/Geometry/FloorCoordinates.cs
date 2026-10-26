@@ -55,5 +55,11 @@ namespace RimSiege.Combat.Geometry
 
         public static IntVec3 GroundPosition(Thing thing) => IsoFloor.HasFloors(thing.Map)
             ? IsoFloor.GroundCellOf(thing.Position, thing.Map) : thing.Position;
+
+        public static float HorizontalDistance(IntVec3 from, IntVec3 to, Map map)
+        {
+            if (!IsoFloor.HasFloors(map)) return from.DistanceTo(to);
+            return IsoFloor.GroundCellOf(from, map).DistanceTo(IsoFloor.GroundCellOf(to, map));
+        }
     }
 }

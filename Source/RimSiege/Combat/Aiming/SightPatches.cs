@@ -7,6 +7,7 @@ using CombatExtended;
 using HarmonyLib;
 using UnityEngine;
 using Verse;
+using RimSiege.Integration;
 
 namespace RimSiege.Combat.Aiming
 {
@@ -25,7 +26,7 @@ namespace RimSiege.Combat.Aiming
 
         // Move the leading comparison to SightQueries.CheckCell, one comparison
         // per cell. This predicate retains CE's complete subsequent fine check.
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
         {
             var codes = instructions.ToList();
             MethodInfo highest = AccessTools.Method(typeof(LightingTracker), nameof(LightingTracker.HighestCoverAt));
@@ -35,7 +36,21 @@ namespace RimSiege.Combat.Aiming
             int firstFine = codes.FindIndex(c => c.labels.Contains(fineEntry));
             for (int i = 0; i < firstFine; i++)
                 codes[firstFine].MoveLabelsFrom(codes[i]).MoveBlocksFrom(codes[i]);
-            return codes.Skip(firstFine);
+            MethodInfo distance = AccessTools.Method(typeof(IntVec3Utility), nameof(IntVec3Utility.DistanceTo), new[] { typeof(IntVec3), typeof(IntVec3) });
+            MethodInfo size = AccessTools.PropertyGetter(typeof(Bounds), nameof(Bounds.size));
+            FieldInfo[] owner = CeAccess.VerbClosureOwner(__originalMethod.DeclaringType);
+            foreach (CodeInstruction c in codes.Skip(firstFine))
+            {
+                if (c.Calls(distance) || c.Calls(size))
+                {
+                    bool measuringDistance = c.Calls(distance);
+                    yield return new CodeInstruction(OpCodes.Ldarg_0).MoveLabelsFrom(c).MoveBlocksFrom(c);
+                    foreach (FieldInfo field in owner) yield return new CodeInstruction(OpCodes.Ldfld, field);
+                    c.opcode = OpCodes.Call;
+                    c.operand = AccessTools.Method(typeof(SightQueries), measuringDistance ? nameof(SightQueries.CoverDistance) : nameof(SightQueries.CoverSize));
+                }
+                yield return c;
+            }
         }
     }
 

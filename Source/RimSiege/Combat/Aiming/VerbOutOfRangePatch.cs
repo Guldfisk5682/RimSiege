@@ -40,4 +40,22 @@ namespace RimSiege.Combat.Aiming
             return false;
         }
     }
+
+    [HarmonyPatch(typeof(Verb_LaunchProjectileCE), nameof(Verb_LaunchProjectileCE.CanHitTargetFrom),
+        new[] { typeof(IntVec3), typeof(LocalTargetInfo), typeof(string) }, new[] { ArgumentType.Normal, ArgumentType.Normal, ArgumentType.Out })]
+    internal static class CeShotFailureReasonPatch
+    {
+        private static void Postfix(Verb_LaunchProjectileCE __instance, IntVec3 root, LocalTargetInfo targ,
+            ref string report, bool __result)
+        {
+            Map map = __instance.Caster.Map;
+            if (__result || report != "CE_BlockedMaxRange".Translate().ToString() || !IsoFloor.HasFloors(map) ||
+                IsoFloor.FloorOf(root, map) == IsoFloor.FloorOf(targ.Cell, map)) return;
+            // The failed-line report still uses raw band distance in CE. Keep
+            // its other failure reasons, and correct this misleading range label.
+            if (IsoFloor.RangeDistance(root, targ.Cell, map) <= __instance.EffectiveRange &&
+                IsoFloor.Distance3D(root, targ.Cell, map) >= __instance.verbProps.EffectiveMinRange(targ, __instance.Caster))
+                report = "CE_NoLoS".Translate();
+        }
+    }
 }

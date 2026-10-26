@@ -10,6 +10,20 @@ namespace RimSiege.Combat.Aiming
 {
     internal static class SightQueries
     {
+        public static float CoverDistance(IntVec3 from, IntVec3 to, Verb_LaunchProjectileCE verb) =>
+            FloorCoordinates.HorizontalDistance(from, to, verb.Caster.Map);
+
+        // CE compares cover size to a muzzle height measured from floor zero.
+        // Translate the size's height into the same frame as the lifted muzzle;
+        // the actual collision bounds and CE's exemption formula stay unchanged.
+        public static Vector3 CoverSize(ref Bounds bounds, Verb_LaunchProjectileCE verb)
+        {
+            Vector3 size = bounds.size;
+            if (IsoFloor.HasFloors(verb.Caster.Map))
+                size.y += CombatHeights.Base(verb.Caster.Position, verb.Caster.Map);
+            return size;
+        }
+
         public static Ray BuildRay(Vector3 origin, Vector3 direction, Verb_LaunchProjectileCE verb,
             IntVec3 targetLoc, Thing targetThing, out SightRay sight)
         {
