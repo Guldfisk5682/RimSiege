@@ -18,7 +18,8 @@ namespace RimSiege.Combat
         [ThreadStatic] internal static IAttackTargetSearcher Searcher;
         [ThreadStatic] internal static Verb_LaunchProjectileCE SightVerb;
 
-        internal static bool Supported(Verb verb) => verb is Verb_LaunchProjectileCE || verb is Verb_LaunchProjectile;
+        internal static bool Supported(Verb verb) => verb is Verb_LaunchProjectileCE ||
+            verb is Verb_LaunchProjectile || verb is Verb_ShootBeam;
 
         internal static Verb VerbFor(Thing seer) => SightVerb?.Caster == seer ? SightVerb :
             Searcher?.Thing == seer ? Searcher.CurrentEffectiveVerb : (seer as IAttackTargetSearcher)?.CurrentEffectiveVerb;

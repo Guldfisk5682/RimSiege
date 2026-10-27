@@ -73,14 +73,14 @@ namespace RimSiege.Combat.Aiming
         private static bool Prefix(Verb __instance, IntVec3 __0, IntVec3 __1, bool __2, ref bool __result, out byte __state)
         {
             __state = default;
-            return __instance is not Verb_LaunchProjectile ||
+            return !IsoVanillaCombat.SpatialVerb(__instance) ||
                 IsoVanillaCombat.HitCell(__instance, __0, __1, __2, ref __result, out __state);
         }
 
         [HarmonyPriority(Priority.Last)]
         private static void Postfix(Verb __instance, IntVec3 __0, IntVec3 __1, bool __2, ref bool __result, byte __state)
         {
-            if (__instance is Verb_LaunchProjectile)
+            if (IsoVanillaCombat.SpatialVerb(__instance))
                 IsoVanillaCombat.HitCellResult(__instance, __0, __1, __2, ref __result, __state);
         }
     }
@@ -92,7 +92,7 @@ namespace RimSiege.Combat.Aiming
             ref bool __result, out byte __state)
         {
             __state = default;
-            return __instance is not Verb_LaunchProjectile ||
+            return !IsoVanillaCombat.SpatialVerb(__instance) ||
                 IsoVanillaCombat.OutOfRange(__instance, root, targ, occupiedRect, ref __result, out __state);
         }
 
@@ -100,7 +100,7 @@ namespace RimSiege.Combat.Aiming
         private static void Postfix(Verb __instance, IntVec3 root, LocalTargetInfo targ, CellRect occupiedRect,
             ref bool __result, byte __state)
         {
-            if (__instance is Verb_LaunchProjectile)
+            if (IsoVanillaCombat.SpatialVerb(__instance))
                 IsoVanillaCombat.RangeResult(__instance, root, targ, occupiedRect, ref __result, __state);
         }
     }
