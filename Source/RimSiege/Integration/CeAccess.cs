@@ -13,6 +13,9 @@ namespace RimSiege.Integration
 {
     internal static class CeAccess
     {
+        internal static readonly float SuppressionRadius =
+            Convert.ToSingle(AccessTools.Field(typeof(ProjectileCE), "SuppressionRadius").GetRawConstantValue());
+
         // CE names the legacy Unity module in metadata. Resolve its vector members
         // against the runtime types without loading a second Unity assembly.
         private static readonly Func<ProjectileCE, Vector3> ExactPosition =
