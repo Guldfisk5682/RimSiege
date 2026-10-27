@@ -31,8 +31,9 @@ namespace RimSiege.Raids
 
         public override void DeSpawn(DestroyMode mode = DestroyMode.Vanish)
         {
-            Map.GetComponent<SiegeRaidMap>().Dropped.Remove(this);
-            Receiver = null;
+            SiegeRaidMap raids = Map.GetComponent<SiegeRaidMap>();
+            raids.Release(this);
+            raids.Dropped.Remove(this);
             base.DeSpawn(mode);
         }
     }

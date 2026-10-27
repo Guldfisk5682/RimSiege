@@ -4,9 +4,10 @@ using Verse.AI;
 
 namespace RimSiege.Raids
 {
-    public sealed class ThinkNode_ConditionalLadderCarrier : ThinkNode_Conditional
+    public sealed class ThinkNode_ConditionalLadderDuty : ThinkNode_Conditional
     {
-        protected override bool Satisfied(Pawn pawn) => LadderInventory.Get(pawn) != null;
+        protected override bool Satisfied(Pawn pawn) => LadderInventory.Get(pawn) != null ||
+            pawn.Map?.GetComponent<SiegeRaidMap>().RecoveryFor(pawn) != null;
     }
 
     public sealed class JobGiver_SiegeApproach : ThinkNode_JobGiver
