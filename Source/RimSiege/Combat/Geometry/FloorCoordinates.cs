@@ -68,6 +68,15 @@ namespace RimSiege.Combat.Geometry
         public static IntVec3 GroundPosition(Thing thing) => IsoFloor.HasFloors(thing.Map)
             ? IsoFloor.GroundCellOf(thing.Position, thing.Map) : thing.Position;
 
+        internal static IntVec3 WorldCell(Vector3 point, Map map)
+        {
+            IntVec3 ground = point.ToIntVec3();
+            if (!IsoFloor.HasFloors(map)) return ground;
+            ground.y = 0;
+            int level = Mathf.Clamp(Mathf.FloorToInt(point.y / CombatHeights.StoreyCe), IsoFloor.MinLevel(map), IsoFloor.MaxLevel(map));
+            return IsoFloor.CellOnFloor(ground, level, map);
+        }
+
         public static float HorizontalDistance(IntVec3 from, IntVec3 to, Map map)
         {
             if (!IsoFloor.HasFloors(map)) return from.DistanceTo(to);
