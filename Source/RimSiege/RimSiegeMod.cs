@@ -1,6 +1,7 @@
 using HarmonyLib;
 using UnityEngine;
 using Verse;
+using RimSiege.Integration;
 
 namespace RimSiege
 {
@@ -11,7 +12,9 @@ namespace RimSiege
         public RimSiegeMod(ModContentPack content) : base(content)
         {
             Settings = GetSettings<SiegeSettings>();
-            new Harmony("Guld.ThreeDSiege").PatchAll(typeof(RimSiegeMod).Assembly);
+            Harmony harmony = new Harmony("Guld.ThreeDSiege");
+            harmony.PatchAll(typeof(RimSiegeMod).Assembly);
+            IsoBeamCombat.Patch(harmony);
             Log.Message("[3Dsiege] Combat Extended / IsoRim patches loaded.");
         }
 

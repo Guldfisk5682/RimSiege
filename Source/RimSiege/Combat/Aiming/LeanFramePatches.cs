@@ -40,4 +40,26 @@ namespace RimSiege.Combat.Aiming
             }
         }
     }
+
+    [HarmonyPatch]
+    internal static class NativeLeanDirectionPatch
+    {
+        private static IEnumerable<MethodBase> TargetMethods()
+        {
+            yield return AccessTools.Method(typeof(Verb), nameof(Verb.TryFindShootLineFromTo));
+            yield return AccessTools.Method(typeof(Verb), "CanHitFromCellIgnoringRange");
+        }
+
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo sources = AccessTools.Method(typeof(ShootLeanUtility), nameof(ShootLeanUtility.LeanShootingSourcesFromTo));
+            MethodInfo destinations = AccessTools.Method(typeof(ShootLeanUtility), nameof(ShootLeanUtility.CalcShootableCellsOf));
+            foreach (CodeInstruction code in instructions)
+            {
+                if (code.Calls(sources)) code.operand = AccessTools.Method(typeof(LeanQueries), nameof(LeanQueries.Sources));
+                else if (code.Calls(destinations)) code.operand = AccessTools.Method(typeof(LeanQueries), nameof(LeanQueries.Destinations));
+                yield return code;
+            }
+        }
+    }
 }

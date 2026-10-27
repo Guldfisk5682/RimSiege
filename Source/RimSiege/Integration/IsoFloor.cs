@@ -24,6 +24,9 @@ namespace RimSiege.Integration
 
         public static float RangeDistance(IntVec3 shooter, IntVec3 target, Map map) => ProjectZ.Api.RangeDistance(shooter, target, map);
 
+        internal static float Reach(float range, int sourceLevel, int targetLevel) =>
+            ProjectZ.Combat.Range3D.Reach(range, sourceLevel, targetLevel);
+
         public static bool CanSeeBetweenFloors(IntVec3 from, IntVec3 to, Map map) => ProjectZ.Api.CanSeeBetweenFloors(from, to, map);
 
         public static CellRect GroundRect(Map map) => ProjectZ.Api.GroundRect(map);

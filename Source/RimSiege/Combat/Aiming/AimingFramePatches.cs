@@ -16,7 +16,7 @@ namespace RimSiege.Combat.Aiming
     internal static class VerbPositionCallsPatch
     {
         private static IEnumerable<MethodBase> TargetMethods() => AccessTools.GetDeclaredMethods(typeof(Verb_LaunchProjectileCE))
-            .Where(m => new[] { "ShiftTarget", "ShiftVecReportFor", "ShotAngle", "ShotRotation", "GetHighestCoverAndSmokeForTarget", "CanHitCellFromCellIgnoringRange" }.Contains(m.Name));
+            .Where(m => new[] { "ShiftTarget", "ShiftVecReportFor", "ShotAngle", "ShotRotation", "AdjustShotHeight", "GetHighestCoverAndSmokeForTarget", "CanHitCellFromCellIgnoringRange" }.Contains(m.Name));
 
         private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
         {
@@ -33,6 +33,13 @@ namespace RimSiege.Combat.Aiming
                     {
                         c.opcode = OpCodes.Call;
                         c.operand = AccessTools.Method(typeof(FloorCoordinates), nameof(FloorCoordinates.DrawPos));
+                    }
+                    else if (__originalMethod.Name == "AdjustShotHeight" && method == AccessTools.PropertyGetter(typeof(Thing), nameof(Thing.Position)))
+                    {
+                        // Only the triangle's horizontal distance is read here;
+                        // the bounds already carry CE world heights.
+                        c.opcode = OpCodes.Call;
+                        c.operand = AccessTools.Method(typeof(FloorCoordinates), nameof(FloorCoordinates.GroundPosition));
                     }
                     else if (method.DeclaringType == typeof(GenSightCE) && method.Name == "AllPointsOnLineOfSight")
                     {

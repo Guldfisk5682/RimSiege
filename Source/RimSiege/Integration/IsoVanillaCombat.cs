@@ -1,8 +1,10 @@
 using ProjectZ.Combat;
+using ProjectZ;
 using System;
 using RimWorld;
 using UnityEngine;
 using Verse;
+using Verse.AI;
 
 namespace RimSiege.Integration
 {
@@ -10,6 +12,9 @@ namespace RimSiege.Integration
     // its global CE gate remains off. ProjectileCE has a separate inheritance tree.
     internal static class IsoVanillaCombat
     {
+        internal static bool SpatialVerb(Verb verb) => verb is Verb_LaunchProjectile ||
+            verb is Verb_CastTargetEffect || verb is Verb_ShootBeam;
+
         internal static bool Sight(IntVec3 from, IntVec3 to, Map map, bool corners, Func<IntVec3, bool> validator) =>
             Los3D.CanSee(from, to, map, corners, validator);
 
@@ -25,8 +30,18 @@ namespace RimSiege.Integration
             Vector3 destination, Thing launcher, bool friendlyFire, byte state) =>
             Projectile_Intercept_Patch.Postfix(projectile, cell, ref result, origin, destination, launcher, friendlyFire, state);
 
-        internal static bool HitCell(Verb verb, IntVec3 from, IntVec3 to, bool corners, ref bool result, out byte state) =>
-            Verb_CanHitCell_Patch.Prefix(verb, from, to, corners, ref result, out state);
+        internal static bool HitCell(Verb verb, IntVec3 from, IntVec3 to, bool corners, ref bool result, out byte state)
+        {
+            bool run = Verb_CanHitCell_Patch.Prefix(verb, from, to, corners, ref result, out state);
+            // Lances omit requireLineOfSight in vanilla. Their floor adaptation
+            // explicitly requires Iso visibility, including solid floor planes.
+            if (!run && state == FinalSay.Yes && verb is Verb_CastTargetEffectLances)
+            {
+                result = Sight(from, to, verb.Caster.Map, corners, null);
+                state = FinalSay.Of(result);
+            }
+            return run;
+        }
 
         internal static void HitCellResult(Verb verb, IntVec3 from, IntVec3 to, bool corners, ref bool result, byte state) =>
             Verb_CanHitCell_Patch.Postfix(verb, from, to, corners, ref result, state);

@@ -7,11 +7,15 @@ using CombatExtended;
 using HarmonyLib;
 using UnityEngine;
 using Verse;
+using CombatExtended.Lasers;
 
 namespace RimSiege.Integration
 {
     internal static class CeAccess
     {
+        internal static readonly float SuppressionRadius =
+            Convert.ToSingle(AccessTools.Field(typeof(ProjectileCE), "SuppressionRadius").GetRawConstantValue());
+
         // CE names the legacy Unity module in metadata. Resolve its vector members
         // against the runtime types without loading a second Unity assembly.
         private static readonly Func<ProjectileCE, Vector3> ExactPosition =
@@ -25,6 +29,14 @@ namespace RimSiege.Integration
         internal static readonly Func<ProjectileCE, IntVec3, bool> CheckCell = AccessTools.MethodDelegate<Func<ProjectileCE, IntVec3, bool>>(AccessTools.Method(typeof(ProjectileCE), "CheckCellForCollision"));
         internal static readonly Func<ProjectileCE, Ray> ProjectileRay = AccessTools.MethodDelegate<Func<ProjectileCE, Ray>>(
             AccessTools.PropertyGetter(typeof(ProjectileCE), "ShotLine"));
+        internal static readonly Func<Thing, Bounds> BoundsFor = AccessTools.MethodDelegate<Func<Thing, Bounds>>(
+            AccessTools.Method(typeof(CE_Utility), nameof(CE_Utility.GetBoundsFor), new[] { typeof(Thing) }));
+        internal static readonly Action<LaserBeamCE, Vector3, Vector3> SpawnLaser =
+            AccessTools.MethodDelegate<Action<LaserBeamCE, Vector3, Vector3>>(AccessTools.Method(typeof(LaserBeamCE), nameof(LaserBeamCE.SpawnBeam)));
+        internal static readonly Action<LaserBeamCE, Thing, Vector3> LaserImpact =
+            AccessTools.MethodDelegate<Action<LaserBeamCE, Thing, Vector3>>(AccessTools.Method(typeof(LaserBeamCE), nameof(LaserBeamCE.Impact), new[] { typeof(Thing), typeof(Vector3) }));
+        internal static readonly Func<LaserBeamCE, Vector3> LaserOrigin = AccessTools.MethodDelegate<Func<LaserBeamCE, Vector3>>(
+            AccessTools.PropertyGetter(typeof(LaserBeamCE), "Origin"));
         internal static readonly Action<ProjectileCE, Thing> Impact = AccessTools.MethodDelegate<Action<ProjectileCE, Thing>>(AccessTools.Method(typeof(ProjectileCE), "Impact"));
         internal static readonly AccessTools.FieldRef<ShiftVecReport, Vector2> ReportSource = AccessTools.FieldRefAccess<ShiftVecReport, Vector2>("shotSource");
         internal static readonly AccessTools.FieldRef<ProjectileCE, int> ShotLineTick = AccessTools.FieldRefAccess<ProjectileCE, int>("lastShotLine");
