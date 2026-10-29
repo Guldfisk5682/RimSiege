@@ -39,8 +39,6 @@ namespace RimSiege.Combat.Aiming
             MethodInfo distance = AccessTools.Method(typeof(IntVec3Utility), nameof(IntVec3Utility.DistanceTo), new[] { typeof(IntVec3), typeof(IntVec3) });
             MethodInfo size = AccessTools.PropertyGetter(typeof(Bounds), nameof(Bounds.size));
             MethodInfo map = AccessTools.PropertyGetter(typeof(Thing), nameof(Thing.Map));
-            MethodInfo pawn = AccessTools.Method(typeof(GridsUtility), nameof(GridsUtility.GetFirstPawn), new[] { typeof(IntVec3), typeof(Map) });
-            MethodInfo cover = AccessTools.Method(typeof(GridsUtility), nameof(GridsUtility.GetCover), new[] { typeof(IntVec3), typeof(Map) });
             FieldInfo[] owner = CeAccess.VerbClosureOwner(__originalMethod.DeclaringType);
             foreach (CodeInstruction c in codes.Skip(firstFine))
             {
@@ -52,11 +50,10 @@ namespace RimSiege.Combat.Aiming
                     c.opcode = OpCodes.Call;
                     c.operand = AccessTools.Method(typeof(SightQueries), measuringDistance ? nameof(SightQueries.CoverDistance) : nameof(SightQueries.CoverSize));
                 }
-                else if (c.Calls(map) || c.Calls(pawn) || c.Calls(cover))
+                else if (c.Calls(map))
                 {
-                    bool mapCall = c.Calls(map), pawnCall = c.Calls(pawn);
                     c.opcode = OpCodes.Call;
-                    c.operand = AccessTools.Method(typeof(CeArtillerySight), mapCall ? nameof(CeArtillerySight.MapFor) : pawnCall ? nameof(CeArtillerySight.FirstPawn) : nameof(CeArtillerySight.Cover));
+                    c.operand = AccessTools.Method(typeof(CeArtillerySight), nameof(CeArtillerySight.MapFor));
                 }
                 yield return c;
             }

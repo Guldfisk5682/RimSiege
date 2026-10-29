@@ -23,11 +23,10 @@ namespace RimSiege.Combat.Aiming
             yield return AccessTools.Method(typeof(VerbProperties), nameof(VerbProperties.AdjustedRange));
         }
 
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
         {
             MethodInfo map = AccessTools.PropertyGetter(typeof(Thing), nameof(Thing.Map));
             MethodInfo mapHeld = AccessTools.PropertyGetter(typeof(Thing), nameof(Thing.MapHeld));
-            MethodInfo cover = AccessTools.Method(typeof(GridsUtility), nameof(GridsUtility.GetCover), new[] { typeof(IntVec3), typeof(Map) });
             foreach (CodeInstruction code in instructions)
             {
                 if (code.Calls(map))
@@ -40,8 +39,6 @@ namespace RimSiege.Combat.Aiming
                     code.opcode = OpCodes.Call;
                     code.operand = AccessTools.Method(typeof(CeArtillerySight), nameof(CeArtillerySight.MapHeldFor));
                 }
-                else if (__originalMethod.Name == "GetHighestCoverAndSmokeForTarget" && code.Calls(cover))
-                    code.operand = AccessTools.Method(typeof(CeArtillerySight), nameof(CeArtillerySight.TargetCover));
                 yield return code;
             }
         }

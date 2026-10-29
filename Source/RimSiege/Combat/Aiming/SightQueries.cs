@@ -63,8 +63,7 @@ namespace RimSiege.Combat.Aiming
             // HighestCoverAt already includes k*StoreyCe through the existing
             // ThingBoundsFramePatch. Adding that base here would double it.
             float coverTop = sight.Map.GetLightingTracker().HighestCoverAt(cell);
-            if (coverTop >= sight.Minimum(cell) && !fineCheck(cell)) return false;
-            return EmplacementLayout.CheckCell(fineCheck, cell, sight);
+            return coverTop < sight.Minimum(cell) || fineCheck(cell);
         }
 
         public static IEnumerable<IntVec3> Cells(Vector3 source, Vector3 targetCell, SightRay sight)

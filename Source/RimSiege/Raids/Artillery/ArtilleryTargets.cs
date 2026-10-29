@@ -75,7 +75,7 @@ namespace RimSiege.Raids.Artillery
 
         // Deployment proves geometry only; actual CE shot eligibility is checked by firing guns.
         internal ArtilleryTargetResult FindGeometry(Faction faction, EmplacementSpec placement, float? effectiveRange = null) =>
-            CeArtillerySight.WithGun(Map, faction, placement, null,
+            CeArtillerySight.WithGun(Map, faction, placement,
                 gun => Search(gun, false, effectiveRange));
 
         internal ArtilleryTargetResult Find(Building_TurretGunCE gun) => Search(gun, true, null);

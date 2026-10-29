@@ -18,7 +18,9 @@ namespace RimSiege.Raids.Artillery
                 parms.faction.def.techLevel < TechLevel.Medieval ||
                 parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn || !parms.spawnCenter.IsValid ||
                 parms.attackTargets?.Count > 0 || parms.controllerPawn?.Faction == Faction.OfPlayer ||
-                (parms.pawnGroups != null && parms.pawnGroups.Values.Distinct().Count() > 1)) return null;
+                // Explicit grouping may omit pawns: vanilla puts unlabelled
+                // members in group -1. Decline before reducing the pawn budget.
+                (parms.pawnGroups?.Count ?? 0) > 0) return null;
 
             string kind;
             if (parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackBreaching) kind = "Breaching";

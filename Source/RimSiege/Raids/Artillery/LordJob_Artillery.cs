@@ -36,6 +36,8 @@ namespace RimSiege.Raids.Artillery
             graph.transitions.First(t => t.sources.Contains(travel) && t.target == siege).AddSource(defend);
             LordToil assault = graph.lordToils.OfType<LordToil_AssaultColony>().First();
             LordToil exit = graph.lordToils.OfType<LordToil_ExitMap>().First();
+            graph.transitions.First(t => t.target == exit &&
+                t.triggers.Any(trigger => trigger is Trigger_BecameNonHostileToPlayer)).AddSource(defend);
             siege.AddFailCondition(() => lord.ownedPawns.Count == 0);
             exit.AddFailCondition(() => lord.ownedPawns.Count == 0);
             if (kind != ArtilleryRaidKind.Siege)
@@ -121,15 +123,16 @@ namespace RimSiege.Raids.Artillery
 
         public override bool ActivateOn(Lord lord, TriggerSignal signal)
         {
+            original.data = data;
+            if (!original.ActivateOn(lord, signal)) return false;
             var job = (LordJob_Artillery)lord.LordJob;
             ArtilleryRaid raid = job.Raid;
-            if (raid.Phase == ArtilleryPhase.Building && !raid.InfantryReleased && Trigger_PawnHarmed.SignalIsHarm(signal))
+            if (raid.Phase == ArtilleryPhase.Building && !raid.InfantryReleased)
             {
                 job.NotifyInterference();
                 return false;
             }
-            original.data = data;
-            return original.ActivateOn(lord, signal);
+            return true;
         }
     }
 

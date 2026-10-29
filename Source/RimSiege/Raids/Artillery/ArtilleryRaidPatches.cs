@@ -95,12 +95,36 @@ namespace RimSiege.Raids.Artillery
             private static bool Prefix(IncidentParms parms, Map map, List<Pawn> pawns, int raidSeed, ref LordJob __result)
             {
                 ArtilleryRaid raid = RaidSpawnPatch.Current?.Artillery;
-                if (restoring || raid == null || raid.OriginalParms != parms ||
-                    (parms.pawnGroups != null && parms.pawnGroups.Values.Distinct().Count() > 1)) return true;
+                if (restoring || raid == null || raid.OriginalParms != parms || raid.CampLord != null ||
+                    pawns.Count != RaidSpawnPatch.Current.Pawns.Count) return true;
                 raid.RaidSeed = raidSeed;
                 map.GetComponent<ArtilleryMap>().Register(raid, pawns);
                 __result = new LordJob_Artillery(raid);
                 return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(RaidStrategyWorker), nameof(RaidStrategyWorker.MakeLords))]
+        private static class LordGroups
+        {
+            // Inspect the actual vanilla partition once, without rebuilding or
+            // merging it. A later arrival/strategy patch can still split a raid.
+            private static List<List<Pawn>> Split(List<Pawn> pawns, Dictionary<Pawn, int> groups)
+            {
+                List<List<Pawn>> result = IncidentParmsUtility.SplitIntoGroups(pawns, groups);
+                if (result.Count != 1 && RaidSpawnPatch.Current?.Pawns == pawns)
+                    RaidSpawnPatch.Current.Artillery = null;
+                return result;
+            }
+
+            private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                MethodInfo original = AccessTools.Method(typeof(IncidentParmsUtility), nameof(IncidentParmsUtility.SplitIntoGroups));
+                foreach (CodeInstruction code in instructions)
+                {
+                    if (code.Calls(original)) code.operand = AccessTools.Method(typeof(LordGroups), nameof(Split));
+                    yield return code;
+                }
             }
         }
     }
