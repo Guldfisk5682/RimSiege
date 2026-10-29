@@ -45,6 +45,12 @@ namespace RimSiege.Raids.Artillery
 
         private IntVec3 Ground(IntVec3 cell) => floors ? IsoFloor.GroundCellOf(cell, map) : cell;
 
+        internal float Bearing(IntVec3 cell)
+        {
+            IntVec3 from = Ground(BreachAnchor), to = Ground(cell);
+            return UnityEngine.Mathf.Atan2(to.x - from.x, to.z - from.z) * UnityEngine.Mathf.Rad2Deg;
+        }
+
         private IntVec3 FindAnchor(SupportRoute route, ArtilleryTargets candidates, List<LocalTargetInfo> colony)
         {
             var walls = new HashSet<Thing>(candidates.Walls);

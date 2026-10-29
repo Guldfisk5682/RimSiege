@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using RimSiege.Integration;
+using RimSiege.Combat.Aiming;
+using UnityEngine;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -12,8 +14,19 @@ namespace RimSiege.Raids.Artillery
     internal static class CampPlanner
     {
         internal const int GunAreaRadius = 8;
-        private const int MaxCellsPerGun = 200;
+        internal const int SiteSurveyRadius = 12;
+        private const int GunClearance = 1;
         private const int MaxLayoutRounds = 3;
+        private const int MaxCoarseLayouts = 6;
+        private const int MaxDirections = 3;
+        private const int DirectionSectors = 8;
+
+        private sealed record Site(IntVec3 Center, List<ArtilleryPlacement> Possible,
+            int DirectCapacity, int TotalCapacity, int Openness, float Bearing, int Sector,
+            float Deviation, float EntryDistance);
+
+        private static int Sector(float bearing) =>
+            Mathf.FloorToInt(Mathf.Repeat(bearing + 180f / DirectionSectors, 360f) / (360f / DirectionSectors));
 
         internal static bool TryPlan(Map map, Faction faction, IntVec3 entry, IntVec3 goal,
             IEnumerable<ArtilleryPlacement> guns, IEnumerable<IntVec3> centers,
@@ -25,10 +38,11 @@ namespace RimSiege.Raids.Artillery
             var direct = new HashSet<ArtilleryPlacement>(templates.Where(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo)));
             float? retreat = direct.Count == 0 ? null : direct.Min(g => effectiveRanges[g]) - CampSiting.RangeMargin;
             templates = templates.OrderBy(g => direct.Contains(g) ? 0 : 1)
-                .ThenBy(g => direct.Contains(g) ? effectiveRanges[g] : 0f).ToList();
+                .ThenBy(g => direct.Contains(g) ? effectiveRanges[g] : 0f)
+                .ThenByDescending(g => g.Def.Size.x * g.Def.Size.z).ToList();
             var placements = new Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool>();
-            var partials = new List<(CampPlan Plan, List<ArtilleryPlacement> Templates, int Direct)>();
-            int precise = 0;
+            var terrain = new Dictionary<IntVec3, bool>();
+            var sites = new List<Site>();
             foreach (IntVec3 center in centers)
             {
                 if (!center.InBounds(map) || !center.Walkable(map)) continue;
@@ -37,112 +51,166 @@ namespace RimSiege.Raids.Artillery
                     InRange(map, center, g.Def, siting.Targets, 14f,
                         effectiveRanges == null ? null : effectiveRanges[g])).ToList();
                 if (possible.Count == 0 || !CanReach(map, entry, center, null)) continue;
-                var cover = VanillaSiegeCover.Plan(map, faction, center)
-                    .Select(item => new ArtilleryPlacement { Def = item.Def, Stuff = item.Stuff, Ammo = item.Ammo,
-                        Cell = item.Cell, Rotation = item.Rotation, Operator = item.Operator }).ToList();
-                if (cover.Count == 0) continue;
-                // One retry lets a large obstructed piece move before any reduction.
-                for (int attempt = 0; attempt < 2; attempt++)
-                {
-                    var candidate = new CampPlan { Center = center, Goal = goal, Cover = cover };
-                    var retained = new List<ArtilleryPlacement>();
-                    foreach (ArtilleryPlacement template in possible)
-                    {
-                        float? range = effectiveRanges == null ? null : effectiveRanges[template];
-                        ArtilleryPlacement gun = FindPlacement(map, faction, entry, candidate, template, siting, range, placements);
-                        if (gun != null) { candidate.Guns.Add(gun); retained.Add(template); }
-                    }
-                    if (candidate.Guns.Count < possible.Count && attempt == 0) continue;
-                    if (candidate.Guns.Count == 0) break;
-                    int directCount = retained.Count(direct.Contains);
-                    if (candidate.Guns.Count == templates.Count && precise < MaxLayoutRounds)
-                    {
-                        if (ValidateAndRepair(map, faction, entry, candidate, siting, retained,
-                            effectiveRanges, false, placements, ref precise))
-                        { plan = candidate; return true; }
-                        break;
-                    }
-                    partials.Add((candidate, retained, directCount));
-                    partials = partials.OrderByDescending(p => p.Direct).ThenByDescending(p => p.Plan.Guns.Count)
-                        .Take(MaxLayoutRounds).ToList();
-                    break;
-                }
-                if (direct.Count == 0 && partials.Count > 0) break;
+                var survey = CampField.Survey(map, center, terrain);
+                if (survey.Capacity == 0) continue;
+                float bearing = siting.Bearing(center);
+                sites.Add(new Site(center, possible, Math.Min(survey.Capacity, possible.Count(direct.Contains)),
+                    Math.Min(survey.Capacity, possible.Count), survey.Openness, bearing, Sector(bearing),
+                    retreat.HasValue ? Math.Abs(siting.Distance(center, siting.BreachAnchor) - retreat.Value) : 0f,
+                    siting.Distance(entry, center)));
             }
-            foreach (var partial in partials.OrderByDescending(p => p.Direct).ThenByDescending(p => p.Plan.Guns.Count))
+
+            var directions = sites.OrderByDescending(s => s.DirectCapacity).ThenByDescending(s => s.TotalCapacity)
+                .ThenByDescending(s => s.Openness).ThenBy(s => s.Deviation).ThenBy(s => s.EntryDistance)
+                .GroupBy(s => s.Sector).Select(group => new Queue<Site>(group)).ToList();
+            var selected = new List<(Queue<Site> Queue, float Bearing)>();
+            var candidates = new List<CampCandidate>();
+            float entryBearing = siting.Bearing(entry);
+            // Each direction gets its main proposal before any direction gets a
+            // backup. Only the finite pool receives static corridor screening.
+            while (directions.Count > 0 && selected.Count < MaxDirections)
             {
-                if (precise >= MaxLayoutRounds) break;
-                if (ValidateAndRepair(map, faction, entry, partial.Plan, siting, partial.Templates,
-                    effectiveRanges, false, placements, ref precise))
-                { plan = partial.Plan; return true; }
+                Queue<Site> queue = directions.OrderByDescending(q => q.Peek().DirectCapacity)
+                    .ThenByDescending(q => selected.Count == 0
+                        ? -Math.Abs(Mathf.DeltaAngle(entryBearing, q.Peek().Bearing))
+                        : selected.Min(chosen => Math.Abs(Mathf.DeltaAngle(chosen.Bearing, q.Peek().Bearing))))
+                    .ThenByDescending(q => q.Peek().TotalCapacity).ThenByDescending(q => q.Peek().Openness)
+                    .ThenBy(q => q.Peek().Deviation).ThenBy(q => q.Peek().EntryDistance).First();
+                directions.Remove(queue);
+                CampCandidate candidate = Next(queue);
+                if (candidate == null) continue;
+                candidates.Add(candidate);
+                selected.Add((queue, candidate.Bearing));
             }
-            return false;
+            foreach (var direction in selected)
+            {
+                if (candidates.Count >= MaxCoarseLayouts) break;
+                CampCandidate backup = Next(direction.Queue);
+                if (backup != null) candidates.Add(backup);
+            }
+            foreach (CampCandidate candidate in candidates)
+                ScreenCandidate(faction, candidate, siting, effectiveRanges);
+
+            CampCandidate best = null;
+            int precise = 0;
+            foreach (CampCandidate candidate in candidates.OrderByDescending(c => c.DirectCount)
+                .ThenByDescending(c => c.Plan.Guns.Count).ThenByDescending(c => c.Field.Openness)
+                .ThenBy(c => c.Deviation).ThenBy(c => c.EntryDistance))
+            {
+                if (candidate.Plan.Guns.Count == 0 || best != null && !Better(candidate, best)) continue;
+                if (precise >= MaxLayoutRounds) break;
+                if (ValidateAndRepair(map, faction, entry, candidate, siting, effectiveRanges, false, ref precise) &&
+                    Better(candidate, best)) best = candidate;
+            }
+            plan = best?.Plan;
+            return plan != null;
+
+            CampCandidate Next(Queue<Site> queue)
+            {
+                while (queue.Count > 0)
+                {
+                    CampCandidate candidate = BuildCandidate(map, faction, entry, goal, queue.Dequeue(),
+                        siting, effectiveRanges, terrain, placements);
+                    if (candidate != null) return candidate;
+                }
+                return null;
+            }
+        }
+
+        private static CampCandidate BuildCandidate(Map map, Faction faction, IntVec3 entry, IntVec3 goal,
+            Site site, CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> ranges,
+            Dictionary<IntVec3, bool> terrain, Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements)
+        {
+            var cover = VanillaSiegeCover.Plan(map, faction, site.Center)
+                .Select(item => new ArtilleryPlacement { Def = item.Def, Stuff = item.Stuff,
+                    Cell = item.Cell, Rotation = item.Rotation }).ToList();
+            if (cover.Count == 0) return null;
+            var field = new CampField(map, site.Center, siting.BreachAnchor, cover, terrain, placements);
+            if (field.Capacity == 0) return null;
+            var plan = new CampPlan { Center = field.Center, Goal = goal, Cover = field.Cover };
+            var retained = new List<ArtilleryPlacement>();
+            foreach (ArtilleryPlacement template in site.Possible)
+            {
+                bool direct = CeArtillerySight.IsDirectFire(template.Def, template.Ammo);
+                int ordinal = retained.Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct);
+                int count = site.Possible.Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct);
+                ArtilleryPlacement gun = FindPlacement(map, faction, entry, plan, template, siting,
+                    ranges == null ? null : ranges[template], field, ordinal, count);
+                if (gun != null) { plan.Guns.Add(gun); retained.Add(template); }
+            }
+            return plan.Guns.Count == 0 ? null : new CampCandidate(plan, field, retained,
+                site.Bearing, site.Sector, site.Deviation, site.EntryDistance);
+        }
+
+        private static bool Better(CampCandidate candidate, CampCandidate previous)
+        {
+            if (previous == null) return true;
+            if (candidate.DirectCount != previous.DirectCount) return candidate.DirectCount > previous.DirectCount;
+            if (candidate.Plan.Guns.Count != previous.Plan.Guns.Count) return candidate.Plan.Guns.Count > previous.Plan.Guns.Count;
+            if (candidate.Field.Openness != previous.Field.Openness) return candidate.Field.Openness > previous.Field.Openness;
+            if (candidate.Deviation != previous.Deviation) return candidate.Deviation < previous.Deviation;
+            return candidate.EntryDistance < previous.EntryDistance;
+        }
+
+        private static void ScreenCandidate(Faction faction, CampCandidate candidate, CampSiting siting,
+            IReadOnlyDictionary<ArtilleryPlacement, float> ranges)
+        {
+            GeometryFailures(faction, candidate, siting, ranges, out HashSet<ArtilleryPlacement> failed, out _);
+            candidate.Remove(failed);
+        }
+
+        private static void GeometryFailures(Faction faction, CampCandidate candidate, CampSiting siting,
+            IReadOnlyDictionary<ArtilleryPlacement, float> ranges, out HashSet<ArtilleryPlacement> failed, out bool lostFront)
+        {
+            failed = new HashSet<ArtilleryPlacement>();
+            var blocked = new HashSet<ArtilleryPlacement>();
+            CampPlan plan = candidate.Plan;
+            for (int i = 0; i < plan.Guns.Count; i++)
+            {
+                ArtilleryPlacement gun = plan.Guns[i];
+                float? range = ranges == null ? null : ranges[candidate.Templates[i]];
+                if (!siting.Candidates.FindGeometry(faction, Spec(gun), range).HasTarget) failed.Add(gun);
+                else if (CeArtillerySight.IsDirectFire(gun.Def, gun.Ammo))
+                {
+                    if (!candidate.Corridors.TryGetValue(gun, out FixedCorridorResult result))
+                        candidate.Corridors[gun] = result = siting.Candidates.CheckFixedCorridor(faction, Spec(gun), range);
+                    if (!result.Clear) { failed.Add(gun); blocked.Add(gun); }
+                }
+            }
+            var front = plan.Guns.Where(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo)).ToList();
+            lostFront = front.Count > 0 && front.All(blocked.Contains);
+            MarkRetreatFailures(plan, siting, candidate.Templates, ranges, failed);
         }
 
         private static ArtilleryPlacement FindPlacement(Map map, Faction faction, IntVec3 entry, CampPlan camp,
-            ArtilleryPlacement template, CampSiting siting, float? range,
-            Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements, ArtilleryPlacement excluded = null, int? insertAt = null)
+            ArtilleryPlacement template, CampSiting siting, float? range, CampField field, int ordinal, int count,
+            ArtilleryPlacement excluded = null, int? insertAt = null)
         {
-            CellRect area = CellRect.CenteredOn(camp.Center, GunAreaRadius);
-            area.ClipInsideMap(map);
-            var cells = area.Cells.ToList();
-            cells.Shuffle();
-            IntVec3 anchor = siting.BreachAnchor;
-            IntVec3 centerGround = IsoFloor.HasFloors(map) ? IsoFloor.GroundCellOf(camp.Center, map) : camp.Center;
-            IntVec3 anchorGround = IsoFloor.HasFloors(map) ? IsoFloor.GroundCellOf(anchor, map) : anchor;
-            int dx = anchorGround.x - centerGround.x, dz = anchorGround.z - centerGround.z;
-            cells = cells.OrderBy(cell => (cell.x - centerGround.x) * dx +
-                    ((IsoFloor.HasFloors(map) ? IsoFloor.GroundCellOf(cell, map).z : cell.z) - centerGround.z) * dz >= 0 ? 0 : 1)
-                .ThenBy(cell => siting.Distance(cell, anchor)).ToList();
-            Rot4[] rotations = PreferredRotations(map, camp.Center, anchor);
-            int limit = Math.Min(MaxCellsPerGun, cells.Count);
-            for (int i = 0; i < limit; i++)
-            foreach (Rot4 rotation in rotations)
+            bool direct = CeArtillerySight.IsDirectFire(template.Def, template.Ammo);
+            foreach (CampField.Slot slot in field.Candidates(template, direct, ordinal, count))
             {
                 var gun = new ArtilleryPlacement { Def = template.Def, Stuff = template.Stuff, Ammo = template.Ammo,
-                    Cell = cells[i], Rotation = rotation, Operator = template.Operator };
+                    Cell = slot.Cell, Rotation = slot.Rotation, Operator = template.Operator };
                 if (excluded != null && excluded.Cell == gun.Cell && excluded.Rotation == gun.Rotation) continue;
-                if (!StaticPlaceable(map, camp.Center, gun, placements) || !Fits(camp, gun) ||
-                    !InRange(map, gun.Cell, gun.Def, siting.Targets, 2f, range)) continue;
-                if (!siting.Candidates.FindGeometry(faction, Spec(gun), range).HasTarget) continue;
+                if (!Fits(camp, gun) || !InRange(map, gun.Cell, gun.Def, siting.Targets, 2f, range) ||
+                    !siting.Candidates.FindGeometry(faction, Spec(gun), range).HasTarget) continue;
                 int index = insertAt ?? camp.Guns.Count;
                 camp.Guns.Insert(index, gun);
-                bool valid = LayoutValid(map, entry, camp, gun.Operator != null, false, out _);
+                bool valid = LayoutValid(map, entry, camp, gun.Operator != null, false, field, out _);
                 camp.Guns.RemoveAt(index);
                 if (valid) return gun;
             }
             return null;
         }
 
-        private static Rot4[] PreferredRotations(Map map, IntVec3 from, IntVec3 to)
-        {
-            if (IsoFloor.HasFloors(map)) { from = IsoFloor.GroundCellOf(from, map); to = IsoFloor.GroundCellOf(to, map); }
-            int x = to.x - from.x, z = to.z - from.z;
-            Rot4 horizontal = x >= 0 ? Rot4.East : Rot4.West;
-            Rot4 vertical = z >= 0 ? Rot4.North : Rot4.South;
-            Rot4 first = Math.Abs(x) > Math.Abs(z) ? horizontal : vertical;
-            Rot4 second = Math.Abs(x) > Math.Abs(z) ? vertical : horizontal;
-            return new[] { first, second, first.Opposite, second.Opposite };
-        }
-
-        private static bool StaticPlaceable(Map map, IntVec3 center, ArtilleryPlacement item,
-            Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> cache)
-        {
-            var key = (item.Def, item.Stuff, item.Rotation, item.Cell);
-            if (!cache.TryGetValue(key, out bool value))
-            {
-                value = item.Cell.InBounds(map) && !item.Cell.Roofed(map) && CanPlace(map, item);
-                cache.Add(key, value);
-            }
-            return value && (!IsoFloor.HasFloors(map) || IsoFloor.FloorOf(item.Cell, map) == IsoFloor.FloorOf(center, map));
-        }
-
         private static bool Fits(CampPlan camp, ArtilleryPlacement gun)
         {
             CellRect rect = GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size);
-            foreach (ArtilleryPlacement existing in camp.Cover.Concat(camp.Guns))
-                foreach (IntVec3 cell in GenAdj.OccupiedRect(existing.Cell, existing.Rotation, existing.Def.Size))
-                    if (rect.Contains(cell)) return false;
+            foreach (ArtilleryPlacement cover in camp.Cover)
+                if (rect.Overlaps(GenAdj.OccupiedRect(cover.Cell, cover.Rotation, cover.Def.Size))) return false;
+            // Leave a clear cell between complete footprints, including 3x3 guns.
+            foreach (ArtilleryPlacement existing in camp.Guns)
+                if (rect.ExpandedBy(GunClearance).Overlaps(GenAdj.OccupiedRect(existing.Cell, existing.Rotation, existing.Def.Size))) return false;
             return true;
         }
 
@@ -156,7 +224,8 @@ namespace RimSiege.Raids.Artillery
                 <= range + margin + (target.Thing == null ? 0 : Math.Max(target.Thing.def.Size.x, target.Thing.def.Size.z)));
         }
 
-        // Called immediately before placing blueprints, using actual operators.
+        // Called immediately before placing blueprints. No generation-time
+        // corridor cache survives into this fresh snapshot with actual operators.
         internal static bool Revalidate(Map map, ArtilleryRaid raid, CampPlan plan, CampSiting siting)
         {
             if (siting.Targets.Count == 0) return false;
@@ -164,81 +233,86 @@ namespace RimSiege.Raids.Artillery
             var templates = plan.Guns.ToList();
             var ranges = templates.ToDictionary(g => g, g => CeArtillerySight.EffectiveRange(map, raid.Faction, Spec(g)));
             var cache = new Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool>();
+            var field = new CampField(map, plan.Center, siting.BreachAnchor, plan.Cover, new(), cache);
+            float bearing = siting.Bearing(plan.Center);
+            var candidate = new CampCandidate(plan, field, templates, bearing, Sector(bearing), 0f, 0f);
             int rounds = 0;
-            return ValidateAndRepair(map, raid.Faction, IntVec3.Invalid, plan, siting, templates,
-                ranges, true, cache, ref rounds);
+            return ValidateAndRepair(map, raid.Faction, IntVec3.Invalid, candidate, siting, ranges, true, ref rounds);
         }
 
-        // Each round validates the whole current layout. Failed pieces may move once;
-        // on the last round, already validated survivors remain available.
-        private static bool ValidateAndRepair(Map map, Faction faction, IntVec3 entry, CampPlan plan, CampSiting siting,
-            List<ArtilleryPlacement> templates, IReadOnlyDictionary<ArtilleryPlacement, float> ranges, bool actual,
-            Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> cache, ref int rounds)
+        private static bool ValidateAndRepair(Map map, Faction faction, IntVec3 entry, CampCandidate candidate,
+            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> ranges, bool actual, ref int rounds)
         {
+            CampPlan plan = candidate.Plan;
+            List<ArtilleryPlacement> templates = candidate.Templates;
             var repaired = new HashSet<ArtilleryPlacement>();
             while (plan.Guns.Count > 0 && rounds < MaxLayoutRounds)
             {
                 rounds++;
-                if (!LayoutFailures(map, entry, plan, actual, true, out HashSet<ArtilleryPlacement> failed)) return false;
-                for (int i = 0; i < plan.Guns.Count; i++)
-                {
-                    ArtilleryPlacement gun = plan.Guns[i];
-                    if (failed.Contains(gun)) continue;
-                    float? range = ranges == null ? null : ranges[templates[i]];
-                    if (!siting.Candidates.FindGeometry(faction, Spec(gun), range).HasTarget)
-                        failed.Add(gun);
-                }
-                MarkRetreatFailures(plan, siting, templates, ranges, failed);
+                if (!ValidateLayout(map, faction, entry, candidate, siting, ranges, actual,
+                    out HashSet<ArtilleryPlacement> failed, out bool lostFront)) return false;
                 if (failed.Count == 0) return KeepSuppliedSubset(map, plan, siting, templates, ranges);
-
                 var originalGuns = plan.Guns.ToList();
                 var originalTemplates = templates.ToList();
-                plan.Guns.Clear();
-                templates.Clear();
-                for (int i = 0; i < originalGuns.Count; i++)
-                    if (!failed.Contains(originalGuns[i])) { plan.Guns.Add(originalGuns[i]); templates.Add(originalTemplates[i]); }
-
-                if (rounds < MaxLayoutRounds)
+                candidate.Remove(failed);
+                int reinserted = 0;
+                if (!lostFront && (actual || failed.Count == 1) && rounds < MaxLayoutRounds)
                 {
-                    int reinserted = 0;
                     for (int i = 0; i < originalGuns.Count; i++)
                     {
                         ArtilleryPlacement gun = originalGuns[i], template = originalTemplates[i];
                         if (!failed.Contains(gun) || !repaired.Add(template)) continue;
                         int index = reinserted;
                         for (int j = 0; j < i; j++) if (!failed.Contains(originalGuns[j])) index++;
-                        float? range = ranges == null ? null : ranges[template];
+                        bool direct = CeArtillerySight.IsDirectFire(gun.Def, gun.Ammo);
                         ArtilleryPlacement replacement = FindPlacement(map, faction, actual ? gun.Operator.Position : entry,
-                            plan, gun, siting, range, cache, gun, index);
+                            plan, gun, siting, ranges == null ? null : ranges[template], candidate.Field,
+                            originalGuns.Take(i).Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct),
+                            originalGuns.Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct), gun, index);
                         if (replacement == null) continue;
                         plan.Guns.Insert(index, replacement);
                         templates.Insert(index, template);
                         reinserted++;
                     }
-                    continue;
                 }
-
-                // Removing shorter-ranged direct guns can increase the minimum
-                // retreat for the remaining direct pieces; preserve mortars.
-                var retreatFailures = new HashSet<ArtilleryPlacement>();
-                MarkRetreatFailures(plan, siting, templates, ranges, retreatFailures);
-                for (int i = plan.Guns.Count - 1; i >= 0; i--)
-                    if (retreatFailures.Contains(plan.Guns[i])) { plan.Guns.RemoveAt(i); templates.RemoveAt(i); }
+                if (reinserted > 0) continue;
+                // Only already validated survivors remain. Removal cannot block
+                // their paths; check retreat again before selecting a supplied set.
                 return KeepSuppliedSubset(map, plan, siting, templates, ranges);
             }
             return false;
         }
 
+        private static bool ValidateLayout(Map map, Faction faction, IntVec3 entry, CampCandidate candidate,
+            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> ranges, bool actual,
+            out HashSet<ArtilleryPlacement> failed, out bool lostFront)
+        {
+            GeometryFailures(faction, candidate, siting, ranges, out failed, out lostFront);
+            var guns = candidate.Plan.Guns.ToList();
+            var templates = candidate.Templates.ToList();
+            // Failed static pieces must not obstruct the surviving pieces' paths.
+            candidate.Remove(failed);
+            bool valid = LayoutFailures(map, entry, candidate.Plan, actual, true, candidate.Field,
+                out HashSet<ArtilleryPlacement> pathFailures);
+            candidate.Plan.Guns.Clear();
+            candidate.Plan.Guns.AddRange(guns);
+            candidate.Templates.Clear();
+            candidate.Templates.AddRange(templates);
+            failed.UnionWith(pathFailures);
+            MarkRetreatFailures(candidate.Plan, siting, candidate.Templates, ranges, failed);
+            return valid;
+        }
+
         // These pieces have already passed this round's geometry and paths.
-        // Removing planned obstacles cannot obstruct those paths. Prefer keeping
-        // indirect support when reducing a crowded camp to leave room for its pods.
+        // Removing planned obstacles cannot obstruct those paths. Keep the same
+        // direct-first priority as candidate ranking; mortars remain a fallback.
         private static bool KeepSuppliedSubset(Map map, CampPlan plan, CampSiting siting,
             List<ArtilleryPlacement> templates, IReadOnlyDictionary<ArtilleryPlacement, float> ranges)
         {
             var guns = plan.Guns.ToList();
             var originals = templates.ToList();
             var priority = Enumerable.Range(0, guns.Count)
-                .OrderBy(i => CeArtillerySight.IsDirectFire(guns[i].Def, guns[i].Ammo) ? 1 : 0)
+                .OrderBy(i => CeArtillerySight.IsDirectFire(guns[i].Def, guns[i].Ammo) ? 0 : 1)
                 .ThenBy(i => ranges == null ? 0f : ranges[originals[i]]).ToList();
             for (int count = priority.Count; count > 0; count--)
                 if (TrySubset(priority.Take(count))) return true;
@@ -277,13 +351,13 @@ namespace RimSiege.Raids.Artillery
 
         private static EmplacementSpec Spec(ArtilleryPlacement p) => new EmplacementSpec(p.Def, p.Stuff, p.Ammo, p.Cell, p.Rotation, p.Operator);
 
-        private static bool CanPlace(Map map, ArtilleryPlacement item) => item.Def != null && item.Cell.InBounds(map) &&
+        internal static bool CanPlace(Map map, ArtilleryPlacement item) => item.Def != null && item.Cell.InBounds(map) &&
             GenConstruct.CanPlaceBlueprintAt_NewTemp(item.Def, item.Cell, item.Rotation, map,
                 false, null, null, item.Stuff, ignoreEdgeArea: true).Accepted;
 
-        private static bool LayoutValid(Map map, IntVec3 entry, CampPlan plan, bool actual, bool precise, out ArtilleryPlacement failed)
+        private static bool LayoutValid(Map map, IntVec3 entry, CampPlan plan, bool actual, bool precise, CampField field, out ArtilleryPlacement failed)
         {
-            if (!LayoutFailures(map, entry, plan, actual, precise, out HashSet<ArtilleryPlacement> failures))
+            if (!LayoutFailures(map, entry, plan, actual, precise, field, out HashSet<ArtilleryPlacement> failures))
             { failed = null; return false; }
             failed = failures.FirstOrDefault();
             return failed == null;
@@ -292,7 +366,7 @@ namespace RimSiege.Raids.Artillery
         // A bad cover makes the entire layout invalid; gun failures are collected
         // together, so one round can retain every independently valid piece.
         private static bool LayoutFailures(Map map, IntVec3 entry, CampPlan plan, bool actual, bool precise,
-            out HashSet<ArtilleryPlacement> failed)
+            CampField field, out HashSet<ArtilleryPlacement> failed)
         {
             failed = new HashSet<ArtilleryPlacement>();
             var occupied = new HashSet<IntVec3>();
@@ -319,9 +393,10 @@ namespace RimSiege.Raids.Artillery
             foreach (ArtilleryPlacement gun in plan.Guns)
             {
                 if (failed.Contains(gun)) continue;
-                if (gun.Cell.Roofed(map)) { failed.Add(gun); continue; }
+                if (!GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size).All(field.Contains) ||
+                    gun.Cell.Roofed(map) || !FitsOtherGuns(plan, gun)) { failed.Add(gun); continue; }
                 IntVec3 interaction = ThingUtility.InteractionCellWhenAt(gun.Def, gun.Cell, gun.Rotation, map);
-                if (!interaction.InBounds(map) || !interaction.Walkable(map) ||
+                if (!field.Contains(interaction) || !interaction.Walkable(map) ||
                     (occupied.Contains(interaction) && !GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size).Contains(interaction)) || !reserved.Add(interaction))
                 { failed.Add(gun); continue; }
                 IntVec3 start = actual ? gun.Operator?.Position ?? IntVec3.Invalid : entry;
@@ -334,13 +409,20 @@ namespace RimSiege.Raids.Artillery
                 foreach (IntVec3 offset in GenAdj.CardinalDirections)
                 {
                     IntVec3 cell = interaction + offset;
-                    if (cell.InBounds(map) && cell.Walkable(map) && !occupied.Contains(cell) && !reserved.Contains(cell) &&
+                    if (field.Contains(cell) && cell.Walkable(map) && !occupied.Contains(cell) && !reserved.Contains(cell) &&
                         (precise ? Reachable(map, start, cell, impassable, pawn) : CanReach(map, start, cell, pawn)))
                     { reserved.Add(cell); supply = true; break; }
                 }
                 if (!supply) { failed.Add(gun); reserved.Remove(interaction); }
             }
             return true;
+        }
+
+        private static bool FitsOtherGuns(CampPlan plan, ArtilleryPlacement gun)
+        {
+            CellRect rect = GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size).ExpandedBy(GunClearance);
+            return plan.Guns.All(other => other == gun ||
+                !rect.Overlaps(GenAdj.OccupiedRect(other.Cell, other.Rotation, other.Def.Size)));
         }
 
         private static TraverseParms Traversal(Pawn pawn) => pawn == null

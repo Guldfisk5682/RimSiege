@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CombatExtended;
+using RimSiege.Combat.Aiming;
 using RimSiege.Integration;
 using RimWorld;
 using UnityEngine;
@@ -80,6 +81,32 @@ namespace RimSiege.Raids.Artillery
 
         internal ArtilleryTargetResult Find(Building_TurretGunCE gun) => Search(gun, true, null);
 
+        // At most two representative wall segments per piece and layout round.
+        // This does not invoke CE's full CanHitTargetFrom construction gate.
+        internal FixedCorridorResult CheckFixedCorridor(Faction faction, EmplacementSpec placement, float? effectiveRange) =>
+            CeArtillerySight.WithGun(Map, faction, placement, gun =>
+            {
+                float range = effectiveRange ?? ((Verb_LaunchProjectileCE)gun.AttackVerb).EffectiveRange;
+                foreach (List<Thing> group in new[] { Walls, Fallback })
+                {
+                    var ranked = Order(group.Where(t => Filter(gun, t, range, group == Fallback) == ArtilleryTargetReason.GeometryPassed)
+                        .Select(t => Rank(gun.Position, t))).ToList();
+                    if (ranked.Count == 0) continue;
+                    Thing first = ranked[0].Thing;
+                    FixedCorridorResult firstResult = FixedShotCorridor.Trace(gun, first);
+                    if (firstResult.Clear) return firstResult;
+                    Thing second = ranked.Skip(1).Select(c => c.Thing).FirstOrDefault(t =>
+                        (t.Position - first.Position).LengthHorizontalSquared >= 16);
+                    if (second != null)
+                    {
+                        FixedCorridorResult secondResult = FixedShotCorridor.Trace(gun, second);
+                        if (secondResult.Clear) return secondResult;
+                    }
+                    return firstResult;
+                }
+                return new FixedCorridorResult(FixedObstruction.Unavailable, IntVec3.Invalid);
+            });
+
         private ArtilleryTargetResult Search(Building_TurretGunCE gun, bool precise, float? effectiveRange)
         {
             if (gun.AttackVerb is not Verb_LaunchProjectileCE verb)
@@ -100,10 +127,7 @@ namespace RimSiege.Raids.Artillery
                         return new ArtilleryTargetResult(target, ArtilleryTargetReason.GeometryPassed, false, false);
                     eligible.Add(Rank(gun.Position, target));
                 }
-                foreach (Ranked candidate in eligible.OrderBy(c => c.Band)
-                    .ThenByDescending(c => c.Shape.Door).ThenByDescending(c => c.Shape.Corner)
-                    .ThenByDescending(c => c.Normal).ThenByDescending(c => c.Shape.OnRoute)
-                    .ThenBy(c => c.Distance).ThenBy(c => c.Thing.thingIDNumber))
+                foreach (Ranked candidate in Order(eligible))
                 {
                     // Preserve virtual dispatch, including CE weapon subclasses' operator checks.
                     if (verb.CanHitTargetFrom(gun.Position, candidate.Thing))
@@ -116,6 +140,11 @@ namespace RimSiege.Raids.Artillery
             return new ArtilleryTargetResult(LocalTargetInfo.Invalid,
                 ceRejected ? ArtilleryTargetReason.CeRejected : reason, ceRejected, ceRejected && operatorPawn != null);
         }
+
+        private static IOrderedEnumerable<Ranked> Order(IEnumerable<Ranked> candidates) => candidates.OrderBy(c => c.Band)
+            .ThenByDescending(c => c.Shape.Door).ThenByDescending(c => c.Shape.Corner)
+            .ThenByDescending(c => c.Normal).ThenByDescending(c => c.Shape.OnRoute)
+            .ThenBy(c => c.Distance).ThenBy(c => c.Thing.thingIDNumber);
 
         // Match the native maximum-range metric without a line-of-fire query.
         // On one floor CE uses the nearest occupied cell; between floors our
