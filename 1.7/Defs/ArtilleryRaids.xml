@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <RimSiege.Raids.Artillery.ArtilleryProfileDef>
+    <defName>RS_ArtilleryOrdinary</defName>
+    <kind>Ordinary</kind>
+    <personnelFactor>0.85</personnelFactor>
+    <equipmentFraction>0.2</equipmentFraction>
+    <totalPieces><points><li>(0,0)</li><li>(1499,0)</li><li>(1500,1)</li><li>(2999,1)</li><li>(3000,3)</li><li>(4999,3)</li><li>(5000,5)</li><li>(7999,5)</li><li>(8000,7)</li></points></totalPieces>
+    <guns>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_TwelvePounder</turret>
+        <cost>60</cost><ammo>Ammo_CannonBall_Bursting</ammo>
+        <count><points><li>(0,0)</li><li>(1499,0)</li><li>(1500,1)</li><li>(2999,1)</li><li>(3000,2)</li><li>(4999,2)</li><li>(5000,3)</li><li>(7999,3)</li><li>(8000,4)</li></points></count>
+      </li>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_PortableMortar</turret>
+        <cost>60</cost>
+        <count><points><li>(0,0)</li><li>(1499,0)</li><li>(1500,1)</li><li>(4999,1)</li><li>(5000,2)</li><li>(7999,2)</li><li>(8000,3)</li></points></count>
+      </li>
+    </guns>
+  </RimSiege.Raids.Artillery.ArtilleryProfileDef>
+  <RimSiege.Raids.Artillery.ArtilleryProfileDef>
+    <defName>RS_ArtilleryBreaching</defName>
+    <kind>Breaching</kind>
+    <equipmentFraction>0.3</equipmentFraction>
+    <totalPieces><points><li>(0,0)</li><li>(1999,0)</li><li>(2000,2)</li><li>(3999,2)</li><li>(4000,4)</li><li>(4999,4)</li><li>(5000,6)</li><li>(7999,6)</li><li>(8000,9)</li></points></totalPieces>
+    <guns>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_TwelvePounder</turret>
+        <cost>60</cost><defaultAmmo>true</defaultAmmo>
+        <count><points><li>(0,0)</li><li>(1999,0)</li><li>(2000,2)</li><li>(2999,2)</li><li>(3000,3)</li><li>(4999,3)</li><li>(5000,5)</li><li>(7999,5)</li><li>(8000,6)</li></points></count>
+      </li>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_PortableMortar</turret>
+        <cost>60</cost>
+        <count><points><li>(0,0)</li><li>(3999,0)</li><li>(4000,1)</li><li>(7999,1)</li><li>(8000,2)</li></points></count>
+      </li>
+      <li>
+        <turret>Turret_Flak</turret><cost>120</cost>
+        <count><points><li>(0,0)</li><li>(7999,0)</li><li>(8000,1)</li></points></count>
+      </li>
+    </guns>
+  </RimSiege.Raids.Artillery.ArtilleryProfileDef>
+  <RimSiege.Raids.Artillery.ArtilleryProfileDef>
+    <defName>RS_ArtillerySiege</defName>
+    <kind>Siege</kind>
+    <equipmentFraction>0.3</equipmentFraction>
+    <totalPieces><points><li>(0,0)</li><li>(1499,0)</li><li>(1500,2)</li><li>(2999,2)</li><li>(3000,3)</li><li>(4999,3)</li><li>(5000,4)</li><li>(8999,4)</li><li>(9000,5)</li></points></totalPieces>
+    <guns>
+      <li>
+        <turret>Turret_Mortar</turret><cost>60</cost>
+        <count><points><li>(0,0)</li><li>(1499,0)</li><li>(1500,2)</li><li>(2999,2)</li><li>(3000,3)</li><li>(4999,3)</li><li>(5000,4)</li></points></count>
+      </li>
+      <li MayRequire="CETeam.CombatExtendedGuns">
+        <turret>CE_Artillery_Howitzer</turret><cost>180</cost>
+        <count><points><li>(0,0)</li><li>(8999,0)</li><li>(9000,1)</li></points></count>
+      </li>
+    </guns>
+  </RimSiege.Raids.Artillery.ArtilleryProfileDef>
+</Defs>

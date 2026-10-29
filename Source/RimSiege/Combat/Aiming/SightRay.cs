@@ -20,7 +20,7 @@ namespace RimSiege.Combat.Aiming
 
         public SightRay(Vector3 from, Vector3 to, Verb_LaunchProjectileCE verb, IntVec3 targetCell)
         {
-            Map = verb.Caster.Map;
+            Map = CeArtillerySight.MapFor(verb.Caster);
             From = from;
             To = to;
             HasFloors = IsoFloor.HasFloors(Map);

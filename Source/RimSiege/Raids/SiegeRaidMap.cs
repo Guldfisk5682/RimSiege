@@ -3,6 +3,7 @@ using System.Linq;
 using CombatExtended;
 using ProjectZ;
 using RimSiege.Integration;
+using RimSiege.Raids.Artillery;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -70,13 +71,14 @@ namespace RimSiege.Raids
                 if (pawn != null) membership[pawn] = party;
         }
 
-        internal void Register(List<Pawn> pawns)
+        internal SiegeParty Register(List<Pawn> pawns)
         {
-            if (!Enabled || !IsoFloor.HasFloors(map)) return;
+            if (!Enabled || !IsoFloor.HasFloors(map)) return null;
             for (int i = parties.Count - 1; i >= 0; i--)
             {
                 SiegeParty old = parties[i];
-                if (old.Members.Any(p => p != null && !p.Dead && p.SpawnedOrAnyParentSpawned && SiegeRoles.Ordinary(p.GetLord()))) continue;
+                if (map.GetComponent<ArtilleryMap>().HasActiveRaid(old.Id) ||
+                    old.Members.Any(p => p != null && !p.Dead && p.SpawnedOrAnyParentSpawned && SiegeRoles.Ordinary(p.GetLord()))) continue;
                 foreach (Pawn former in old.Members)
                     if (former != null) membership.Remove(former);
                 parties.RemoveAt(i);
@@ -87,6 +89,7 @@ namespace RimSiege.Raids
             List<Pawn> eligible = pawns.Where(p => SiegeRoles.Eligible(p, party)).ToList();
             eligible.Shuffle();
             foreach (Pawn pawn in eligible) Issue(pawn, party);
+            return party;
         }
 
         internal void Issue(Pawn pawn, SiegeParty party)

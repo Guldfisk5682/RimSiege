@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LanguageData>
   <RS_EnhancedAssault>Enhanced siege assaults</RS_EnhancedAssault>
-  <RS_EnhancedAssaultDescription>New ordinary raids carry limited ladder kits, recover dropped kits and prefer ladders to breaking walls when no existing route is open. Existing routes and special raid strategies retain their usual behavior.</RS_EnhancedAssaultDescription>
+  <RS_EnhancedAssaultDescription>Raiders carry and recover limited ladder kits. Eligible concentrated raids may deploy a fortified artillery camp, while sappers favor demolition troops. Existing entrances and shared routes remain in use.</RS_EnhancedAssaultDescription>
+  <RS_ArtilleryChance>Artillery support chance: {0}</RS_ArtilleryChance>
   <RS_LadderCarrier>[Ladder carrier]</RS_LadderCarrier>
 </LanguageData>

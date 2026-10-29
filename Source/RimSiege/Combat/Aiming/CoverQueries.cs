@@ -11,7 +11,7 @@ namespace RimSiege.Combat.Aiming
     {
         public static List<IntVec3> Cells(IntVec3 from, IntVec3 to, Verb_LaunchProjectileCE verb, LocalTargetInfo actualTarget)
         {
-            Map map = verb.Caster.Map;
+            Map map = CeArtillerySight.MapFor(verb.Caster);
             if (!IsoFloor.HasFloors(map))
                 return GenSightCE.AllPointsOnLineOfSight(from, to);
             float target = !verb.Projectile.projectile.flyOverhead &&
@@ -23,7 +23,7 @@ namespace RimSiege.Combat.Aiming
 
         public static List<IntVec3> ThrownCells(IntVec3 from, IntVec3 to, Verb_LaunchProjectileCE verb, LocalTargetInfo target)
         {
-            Map map = verb.Caster.Map;
+            Map map = CeArtillerySight.MapFor(verb.Caster);
             if (!IsoFloor.HasFloors(map)) return GenSightCE.AllPointsOnLineOfSight(from, to);
             float targetHeight = CombatHeights.Base(target.Cell, map) + new CollisionVertical(target.Thing).HeightRange.Average;
             return AtHeights(from, to, map, verb.ShotHeight, targetHeight);

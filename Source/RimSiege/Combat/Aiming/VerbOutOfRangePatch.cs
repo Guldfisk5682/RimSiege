@@ -19,7 +19,7 @@ namespace RimSiege.Combat.Aiming
             if (!(__instance is Verb_LaunchProjectileCE ce))
                 return true;
 
-            Map map = __instance.Caster?.Map;
+            Map map = CeArtillerySight.MapFor(__instance.Caster);
             if (map == null || !targ.IsValid || !IsoFloor.HasFloors(map))
                 return true;
 
@@ -52,7 +52,7 @@ namespace RimSiege.Combat.Aiming
         private static void Postfix(Verb_LaunchProjectileCE __instance, IntVec3 root, LocalTargetInfo targ,
             ref string report, bool __result)
         {
-            Map map = __instance.Caster.Map;
+            Map map = CeArtillerySight.MapFor(__instance.Caster);
             if (__result || report != "CE_BlockedMaxRange".Translate().ToString() || !IsoFloor.HasFloors(map) ||
                 IsoFloor.FloorOf(root, map) == IsoFloor.FloorOf(targ.Cell, map)) return;
             IntVec3 targetCell = !__instance.Projectile.projectile.flyOverhead &&
