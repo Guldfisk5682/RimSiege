@@ -32,7 +32,7 @@ namespace RimSiege.Raids
                  parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart ||
                  Current.Pawns.Exists(p => SiegeRoles.Ordinary(p.GetLord()))))
             {
-                SiegeParty party = map.GetComponent<SiegeRaidMap>().Register(Current.Pawns);
+                SiegeParty party = map.GetComponent<SiegeRaidMap>().Register(Current.Pawns, parms.faction);
                 if (Current.Artillery != null && party != null) Current.Artillery.Id = party.Id;
             }
         }

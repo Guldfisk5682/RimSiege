@@ -16,6 +16,7 @@ namespace RimSiege.Raids
         public int Id;
         public int InitialCount;
         public int Issued;
+        public int LadderQuotaPercent = 10;
         public List<Pawn> Members = new List<Pawn>();
         public List<Pawn> Operators = new List<Pawn>();
         internal IsoSiegePlanner Planner;
@@ -41,6 +42,7 @@ namespace RimSiege.Raids
             Scribe_Values.Look(ref Id, "id");
             Scribe_Values.Look(ref InitialCount, "initialCount");
             Scribe_Values.Look(ref Issued, "issued");
+            Scribe_Values.Look(ref LadderQuotaPercent, "ladderQuotaPercent", 10);
             Scribe_Collections.Look(ref Members, "members", LookMode.Reference);
             Scribe_Collections.Look(ref Operators, "operators", LookMode.Reference);
         }
@@ -71,7 +73,7 @@ namespace RimSiege.Raids
                 if (pawn != null) membership[pawn] = party;
         }
 
-        internal SiegeParty Register(List<Pawn> pawns)
+        internal SiegeParty Register(List<Pawn> pawns, Faction faction)
         {
             if (!Enabled || !IsoFloor.HasFloors(map)) return null;
             for (int i = parties.Count - 1; i >= 0; i--)
@@ -83,7 +85,11 @@ namespace RimSiege.Raids
                     if (former != null) membership.Remove(former);
                 parties.RemoveAt(i);
             }
-            SiegeParty party = new SiegeParty { Id = nextId++, InitialCount = pawns.Count, Members = new List<Pawn>(pawns) };
+            SiegeParty party = new SiegeParty
+            {
+                Id = nextId++, InitialCount = pawns.Count, Members = new List<Pawn>(pawns),
+                LadderQuotaPercent = faction.def.humanlikeFaction && faction.def.categoryTag == "Tribal" ? 20 : 10
+            };
             parties.Add(party);
             Index(party);
             List<Pawn> eligible = pawns.Where(p => SiegeRoles.Eligible(p, party)).ToList();
@@ -94,7 +100,8 @@ namespace RimSiege.Raids
 
         internal void Issue(Pawn pawn, SiegeParty party)
         {
-            if (party.Issued >= (party.InitialCount + 9) / 10 || LadderInventory.Get(pawn) != null || !SiegeRoles.Eligible(pawn, party)) return;
+            if (party.Issued >= (party.InitialCount * party.LadderQuotaPercent + 99) / 100 ||
+                LadderInventory.Get(pawn) != null || !SiegeRoles.Eligible(pawn, party)) return;
             LadderKit kit = (LadderKit)ThingMaker.MakeThing(SiegeDefOf.RS_LadderKit);
             kit.RaidId = party.Id;
             pawn.inventory.innerContainer.TryAdd(kit, false);
