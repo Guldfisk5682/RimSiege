@@ -15,7 +15,7 @@ namespace RimSiege.Raids.Artillery
         {
             if (!SiegeRaidMap.Enabled || RimSiegeMod.Settings.ArtilleryChance == 0 ||
                 !(parms.target is Map map) || parms.faction == null || !parms.faction.HostileTo(Faction.OfPlayer) || !parms.faction.def.humanlikeFaction ||
-                parms.faction.def.techLevel < TechLevel.Medieval ||
+                parms.faction.def.techLevel < TechLevel.Industrial ||
                 parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn || !parms.spawnCenter.IsValid ||
                 parms.attackTargets?.Count > 0 || parms.controllerPawn?.Faction == Faction.OfPlayer ||
                 // Explicit grouping may omit pawns: vanilla puts unlabelled
