@@ -30,6 +30,7 @@ namespace RimSiege.Raids
             if (__result && Current?.Pawns != null && parms.target is Map map &&
                 (Current.Artillery != null || parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttack ||
                  parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart ||
+                 parms.raidStrategy.Worker is RaidStrategyWorker_StageThenAttack ||
                  Current.Pawns.Exists(p => SiegeRoles.Ordinary(p.GetLord()))))
             {
                 SiegeParty party = map.GetComponent<SiegeRaidMap>().Register(Current.Pawns, parms.faction);

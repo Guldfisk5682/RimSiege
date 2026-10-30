@@ -17,6 +17,7 @@ namespace RimSiege.Raids
         internal static bool Ordinary(Lord lord)
         {
             if (lord?.LordJob is LordJob_Artillery artillery) return artillery.IsNativeAssault;
+            if (lord?.LordJob is LordJob_StageThenAttack) return true;
             return lord?.LordJob is LordJob_AssaultColony assault && !Sappers(assault) && !Breachers(assault);
         }
 
