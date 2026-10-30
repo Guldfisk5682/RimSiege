@@ -22,7 +22,8 @@ namespace RimSiege.Raids
                 LadderInventory.Drop(pawn);
                 return null;
             }
-            if (party.Planner.Destination(pawn, true).IsValid) return null;
+            // Kit carriers place ASAP and ignore combat; this JobGiver only
+            // runs under ThinkNode_ConditionalLadderDuty (has kit or recovery).
             IntVec3 existingRoute = party.Planner.Destination(pawn, false);
             if (existingRoute.IsValid)
                 return JobMaker.MakeJob(JobDefOf.Goto, existingRoute, 500, checkOverrideOnExpiry: true);
@@ -31,8 +32,8 @@ namespace RimSiege.Raids
             Job recovery = raids.Recovery(pawn, party);
             if (recovery != null) return recovery;
 
-            // Other troops retain combat priority and use the shared route as soon
-            // as it exists. Carrier plans run ahead of combat, including after pickup.
+            // Other troops (recovery waiters) hold while carriers place; once a
+            // shared route exists they Goto it above. Carriers already Plan above.
             foreach (Pawn carrier in party.Members)
                 if (carrier != null && carrier.Map == pawn.Map && LadderInventory.Get(carrier) != null &&
                     raids.Applies(carrier) && SiegeRoles.Eligible(carrier, party) && party.CanPlan(carrier))
