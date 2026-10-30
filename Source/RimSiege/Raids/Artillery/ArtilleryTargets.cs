@@ -77,9 +77,11 @@ namespace RimSiege.Raids.Artillery
         // Deployment proves geometry only; actual CE shot eligibility is checked by firing guns.
         internal ArtilleryTargetResult FindGeometry(Faction faction, EmplacementSpec placement, float? effectiveRange = null) =>
             CeArtillerySight.WithGun(Map, faction, placement,
-                gun => Search(gun, false, effectiveRange));
+                gun => Search(gun, false, effectiveRange, wallsOnly: false));
 
-        internal ArtilleryTargetResult Find(Building_TurretGunCE gun) => Search(gun, true, null);
+        internal ArtilleryTargetResult Find(Building_TurretGunCE gun) => Search(gun, true, null, wallsOnly: false);
+
+        internal ArtilleryTargetResult FindWalls(Building_TurretGunCE gun) => Search(gun, true, null, wallsOnly: true);
 
         // At most two representative wall segments per piece and layout round.
         // This does not invoke CE's full CanHitTargetFrom construction gate.
@@ -107,7 +109,7 @@ namespace RimSiege.Raids.Artillery
                 return new FixedCorridorResult(FixedObstruction.Unavailable, IntVec3.Invalid);
             });
 
-        private ArtilleryTargetResult Search(Building_TurretGunCE gun, bool precise, float? effectiveRange)
+        private ArtilleryTargetResult Search(Building_TurretGunCE gun, bool precise, float? effectiveRange, bool wallsOnly)
         {
             if (gun.AttackVerb is not Verb_LaunchProjectileCE verb)
                 return new ArtilleryTargetResult(LocalTargetInfo.Invalid, ArtilleryTargetReason.UnavailableWeapon, false, false);
@@ -115,12 +117,14 @@ namespace RimSiege.Raids.Artillery
             Pawn operatorPawn = CeArtillerySight.OperatorFor(gun);
             ArtilleryTargetReason reason = ArtilleryTargetReason.NoCandidates;
             bool ceRejected = false;
-            foreach (List<Thing> group in new[] { Walls, Fallback })
+            List<Thing>[] groups = wallsOnly ? new[] { Walls } : new[] { Walls, Fallback };
+            foreach (List<Thing> group in groups)
             {
+                bool fallback = !wallsOnly && group == Fallback;
                 var eligible = new List<Ranked>();
                 foreach (Thing target in group)
                 {
-                    ArtilleryTargetReason rejected = Filter(gun, target, range, group == Fallback);
+                    ArtilleryTargetReason rejected = Filter(gun, target, range, fallback);
                     if (rejected != ArtilleryTargetReason.GeometryPassed) { reason = rejected; continue; }
                     // Search only asks whether an inexpensive candidate exists; no ray or sort is needed yet.
                     if (!precise)

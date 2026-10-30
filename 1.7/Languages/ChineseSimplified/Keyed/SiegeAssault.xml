@@ -7,7 +7,9 @@
   <RS_ArtilleryRaidLabel_Ordinary>炮兵增援的{0}</RS_ArtilleryRaidLabel_Ordinary>
   <RS_ArtilleryRaidLabel_Breaching>炮兵增援的{0}</RS_ArtilleryRaidLabel_Breaching>
   <RS_ArtilleryRaidLabel_Siege>强化围攻{0}</RS_ArtilleryRaidLabel_Siege>
-  <RS_ArtilleryRaidArrival_Ordinary>这支袭击队伍配有炮兵增援。他们将先建立炮兵阵地作为火力支援，掩护突破，协同步兵发起进攻。</RS_ArtilleryRaidArrival_Ordinary>
-  <RS_ArtilleryRaidArrival_Breaching>这支破墙部队配有炮兵增援。他们将先建立炮兵阵地作为火力支援，掩护突破，协同步兵发起进攻。</RS_ArtilleryRaidArrival_Breaching>
+  <RS_ArtilleryRaidArrival_Ordinary>这支袭击队伍配有炮兵增援。他们将先建立炮兵阵地作为火力支援，协同步兵发起进攻。</RS_ArtilleryRaidArrival_Ordinary>
+  <RS_ArtilleryRaidArrival_Breaching>这支破墙部队配有炮兵增援。他们将先建立炮兵阵地作为火力支援，协同步兵发起进攻。</RS_ArtilleryRaidArrival_Breaching>
+  <RS_ArtilleryRaidLabel_Mechanoid>机械炮阵{0}</RS_ArtilleryRaidLabel_Mechanoid>
+  <RS_ArtilleryRaidArrival_Mechanoid>这支机械族部队配有自动炮台支援。敌对的建造机将建立炮击阵地作为火力支援，协同步兵发起进攻</RS_ArtilleryRaidArrival_Mechanoid>
   <RS_ArtilleryRaidArrival_Siege>这支围攻部队配有比普通袭击更强大的火炮火力。他们将建立带掩体的炮兵阵地，持续炮击守军和防线，为突破殖民地做准备。</RS_ArtilleryRaidArrival_Siege>
 </LanguageData>

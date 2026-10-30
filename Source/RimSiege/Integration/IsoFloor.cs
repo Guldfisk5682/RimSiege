@@ -29,6 +29,10 @@ namespace RimSiege.Integration
 
         public static bool CanSeeBetweenFloors(IntVec3 from, IntVec3 to, Map map) => ProjectZ.Api.CanSeeBetweenFloors(from, to, map);
 
+        public static bool OpenSkyOver(IntVec3 cell, Map map) => ProjectZ.Api.OpenSkyOver(cell, map);
+
+        public static bool SameFloor(IntVec3 a, IntVec3 b, Map map) => ProjectZ.Api.SameFloor(a, b, map);
+
         public static CellRect GroundRect(Map map) => ProjectZ.Api.GroundRect(map);
 
         public static int MinLevel(Map map) => ProjectZ.Levels.Min(map);

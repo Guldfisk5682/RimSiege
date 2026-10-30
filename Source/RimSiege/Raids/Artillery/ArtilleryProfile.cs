@@ -10,26 +10,47 @@ namespace RimSiege.Raids.Artillery
     public sealed class ArtilleryProfileDef : Def
     {
         public string kind;
+        public float minPoints;
         public float personnelFactor = 1f;
+        public SimpleCurve personnelCurve;
         public float equipmentFraction = 0.3f;
-        public SimpleCurve totalPieces = new SimpleCurve();
+        public FloatRange budgetShare;
+        public SimpleCurve totalPieces;
+        public int mortarClassLimit = 5;
         public List<ArtilleryGunRule> guns = new List<ArtilleryGunRule>();
+
+        internal float PersonnelPoints(float raidPoints, float pawnPoints) =>
+            pawnPoints * (personnelCurve != null ? personnelCurve.Evaluate(raidPoints) : personnelFactor);
+
+        internal bool BelowGate(float raidPoints) =>
+            raidPoints < minPoints || (totalPieces != null && totalPieces.Evaluate(raidPoints) < 1f);
 
         internal List<ArtilleryPlacement> Configure(float raidPoints, float pawnPoints, Faction faction)
         {
             var result = new List<ArtilleryPlacement>();
             var used = new Dictionary<ArtilleryGunRule, int>();
-            float remaining = pawnPoints * equipmentFraction;
-            int limit = Mathf.FloorToInt(totalPieces.Evaluate(raidPoints));
+            float share = budgetShare.max > 0f || budgetShare.min > 0f
+                ? budgetShare.RandomInRange : equipmentFraction;
+            float remaining = pawnPoints * share;
+            int limit = totalPieces == null ? int.MaxValue : Mathf.FloorToInt(totalPieces.Evaluate(raidPoints));
+            int mortarCount = 0;
             while (result.Count < limit)
             {
                 var choices = new List<ArtilleryGunRule>();
                 foreach (ArtilleryGunRule rule in guns)
                 {
+                    if (rule.turret == null || rule.turret.techLevel > faction.def.techLevel) continue;
+                    float cost = rule.ResolvedCost;
+                    if (cost > remaining) continue;
                     used.TryGetValue(rule, out int count);
-                    if (rule.turret != null && rule.turret.techLevel <= faction.def.techLevel &&
-                        rule.cost <= remaining && count < Mathf.FloorToInt(rule.count.Evaluate(raidPoints)))
-                        choices.Add(rule);
+                    int typeLimit = rule.count == null ? int.MaxValue : Mathf.FloorToInt(rule.count.Evaluate(raidPoints));
+                    if (count >= typeLimit) continue;
+                    ThingDef previewAmmo = rule.ammo;
+                    if (previewAmmo == null && rule.defaultAmmo)
+                        previewAmmo = SelectAmmo(rule.turret, faction, true);
+                    bool mortar = !CeArtillerySight.IsDirectFire(rule.turret, previewAmmo);
+                    if (mortar && mortarCount >= mortarClassLimit) continue;
+                    choices.Add(rule);
                 }
                 if (choices.Count == 0) break;
                 ArtilleryGunRule selected = choices.RandomElementByWeight(g => g.weight);
@@ -37,9 +58,8 @@ namespace RimSiege.Raids.Artillery
                 CompProperties_AmmoUser ammoProps = selected.turret.building.turretGunDef.GetCompProperties<CompProperties_AmmoUser>();
                 if (ammo == null && ammoProps?.ammoSet != null && AmmoUtility.IsAmmoSystemActive(ammoProps.ammoSet))
                 {
-                    // No usable ammunition: remove this rule from this selection, then
-                    // try another gun instead of accepting an unsupplied emplacement.
-                    used[selected] = Mathf.FloorToInt(selected.count.Evaluate(raidPoints));
+                    used[selected] = selected.count == null
+                        ? int.MaxValue : Mathf.FloorToInt(selected.count.Evaluate(raidPoints));
                     continue;
                 }
                 result.Add(new ArtilleryPlacement
@@ -50,7 +70,8 @@ namespace RimSiege.Raids.Artillery
                 });
                 used.TryGetValue(selected, out int previous);
                 used[selected] = previous + 1;
-                remaining -= selected.cost;
+                remaining -= selected.ResolvedCost;
+                if (!CeArtillerySight.IsDirectFire(selected.turret, ammo)) mortarCount++;
             }
             return result;
         }
@@ -77,12 +98,14 @@ namespace RimSiege.Raids.Artillery
     public sealed class ArtilleryGunRule
     {
         public ThingDef turret;
-        // Explicit ammunition overrides defaultAmmo and the siege ammo roll.
         public ThingDef ammo;
-        // Configuration units use the vanilla mortar's 60-point basis, not market silver.
-        public float cost = 60f;
+        // cost <= 0 resolves to turret.building.combatPower at configure time.
+        public float cost;
         public float weight = 1f;
         public bool defaultAmmo;
-        public SimpleCurve count = new SimpleCurve();
+        // null = unlimited of this type (subject to budget / total / mortar caps).
+        public SimpleCurve count;
+
+        internal float ResolvedCost => cost > 0f ? cost : (turret?.building?.combatPower ?? 0f);
     }
 }

@@ -5,7 +5,7 @@ using Verse.AI.Group;
 
 namespace RimSiege.Raids.Artillery
 {
-    internal enum ArtilleryRaidKind { Ordinary, Breaching, Siege }
+    internal enum ArtilleryRaidKind { Ordinary, Breaching, Siege, Mechanoid }
     internal enum ArtilleryPhase { Planned, Travelling, Building, Supporting, Assaulting, Abandoned }
 
     // One record belongs to the original incident, even when its pawns later use different lords.

@@ -99,6 +99,8 @@ namespace RimSiege.Raids.Artillery
                     pawns.Count != RaidSpawnPatch.Current.Pawns.Count) return true;
                 raid.RaidSeed = raidSeed;
                 map.GetComponent<ArtilleryMap>().Register(raid, pawns);
+                // Mechanoid keeps the vanilla StageThenAttack / AssaultColony lord.
+                if (raid.Kind == ArtilleryRaidKind.Mechanoid) return true;
                 __result = new LordJob_Artillery(raid);
                 return false;
             }

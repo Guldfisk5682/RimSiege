@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using CombatExtended;
 using HarmonyLib;
 using RimWorld;
 using Verse;
@@ -12,6 +13,7 @@ namespace RimSiege.Raids.Artillery
         private List<ArtilleryRaid> raids = new List<ArtilleryRaid>();
         private readonly Dictionary<Pawn, ArtilleryRaid> members = new Dictionary<Pawn, ArtilleryRaid>();
         private readonly Dictionary<Thing, ArtilleryRaid> guns = new Dictionary<Thing, ArtilleryRaid>();
+        private List<Building> orphanGuns = new List<Building>();
         private int nextKey = 1;
 
         public ArtilleryMap(Map map) : base(map) { }
@@ -99,8 +101,46 @@ namespace RimSiege.Raids.Artillery
                 raid.CompletionSent = true;
                 QuestUtility.SendQuestTargetSignals(raid.CompletionTags, "AllEnemiesDefeated");
             }
+            if (raid.Kind == ArtilleryRaidKind.Mechanoid)
+                HandOffOrphanGuns(raid);
             SupportRoute.Invalidate(raid);
             Remove(raid);
+        }
+
+        private void HandOffOrphanGuns(ArtilleryRaid raid)
+        {
+            if (raid.Camp?.Guns == null) return;
+            foreach (ArtilleryPlacement gun in raid.Camp.Guns)
+            {
+                Building building = gun.Building;
+                if (building == null || building.Destroyed || !building.Spawned ||
+                    building.Faction != Faction.OfMechanoids) continue;
+                CompAmmoUser ammo = (building as Building_TurretGunCE)?.CompAmmo;
+                if (ammo == null || ammo.EmptyMagazine)
+                    building.TryGetComp<CompExplosive>()?.StartWick();
+                else if (!orphanGuns.Contains(building))
+                    orphanGuns.Add(building);
+            }
+        }
+
+        public override void MapComponentTick()
+        {
+            if (Find.TickManager.TicksGame % 60 != 0 || orphanGuns.Count == 0) return;
+            for (int i = orphanGuns.Count - 1; i >= 0; i--)
+            {
+                Building building = orphanGuns[i];
+                if (building.DestroyedOrNull() || building.Faction != Faction.OfMechanoids)
+                {
+                    orphanGuns.RemoveAt(i);
+                    continue;
+                }
+                CompAmmoUser ammo = (building as Building_TurretGunCE)?.CompAmmo;
+                if (ammo == null || ammo.EmptyMagazine)
+                {
+                    building.TryGetComp<CompExplosive>()?.StartWick();
+                    orphanGuns.RemoveAt(i);
+                }
+            }
         }
 
         public override void FinalizeInit()
@@ -122,6 +162,9 @@ namespace RimSiege.Raids.Artillery
         {
             Scribe_Collections.Look(ref raids, "rimSiegeArtilleryRaids", LookMode.Deep);
             raids ??= new List<ArtilleryRaid>();
+            Scribe_Collections.Look(ref orphanGuns, "rimSiegeArtilleryOrphanGuns", LookMode.Reference);
+            orphanGuns ??= new List<Building>();
+            orphanGuns.RemoveAll(b => b.DestroyedOrNull());
             Scribe_Values.Look(ref nextKey, "rimSiegeArtilleryNextKey", 1);
         }
     }

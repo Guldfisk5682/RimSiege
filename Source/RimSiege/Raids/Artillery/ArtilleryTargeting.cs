@@ -55,10 +55,19 @@ namespace RimSiege.Raids.Artillery
             return window.Candidates;
         }
 
-        private static bool Prefix(Building_TurretGunCE __instance, LocalTargetInfo ___forcedTarget, ref LocalTargetInfo __result)
+        private static bool Prefix(Building_TurretGunCE __instance, LocalTargetInfo ___forcedTarget,
+            ref LocalTargetInfo __result, out bool __state)
         {
+            __state = false;
             ArtilleryRaid raid = ArtilleryRegistry.Find(__instance);
             if (raid == null || ___forcedTarget.IsValid) return true;
+            // Mechanoid direct-fire: let CE's 3D TryFindNewTarget run, then wall-fallback in Postfix.
+            if (raid.Kind == ArtilleryRaidKind.Mechanoid &&
+                CeArtillerySight.IsDirectFire(__instance.def, __instance.CompAmmo?.CurrentAmmo))
+            {
+                __state = true;
+                return true;
+            }
             Verb verb = __instance.AttackVerb;
             if (verb == null || !verb.Available())
             {
@@ -89,6 +98,35 @@ namespace RimSiege.Raids.Artillery
             if (!search.Result.HasTarget) __instance.ResetCurrentTarget();
             // Do not fall through to CE's every-tick native search on an empty result.
             return false;
+        }
+
+        private static void Postfix(Building_TurretGunCE __instance, bool __state, ref LocalTargetInfo __result)
+        {
+            if (!__state || __result.IsValid) return;
+            Verb verb = __instance.AttackVerb;
+            if (verb == null || !verb.Available()) return;
+            ArtilleryRaid raid = ArtilleryRegistry.Find(__instance);
+            if (raid == null) return;
+            int tick = Find.TickManager.TicksGame;
+            ArtilleryTargets candidates = Candidates(raid, __instance.Map, tick);
+            CompFireArc arc = __instance.CompFireArc;
+            var inputs = new SearchInputs(__instance.CompAmmo?.CurrentAmmo, __instance.CompAmmo?.SelectedAmmo,
+                CeArtillerySight.OperatorFor(__instance), __instance.Position, __instance.Rotation,
+                arc?.CenterAngle ?? 0f, arc?.Span ?? 0f, arc != null && ArcOn(arc), Controller.settings.EnableArcOfFire);
+            GunSearch search = Searches.GetValue(__instance, static _ => new GunSearch());
+            bool reuse = search.Candidates == candidates && search.Inputs == inputs && tick < search.NextSearchTick;
+            if (reuse && search.Result.HasTarget)
+                reuse = candidates.Filter(__instance, search.Result.Target.Thing, verb.EffectiveRange, fallback: false)
+                    == ArtilleryTargetReason.GeometryPassed;
+            if (!reuse)
+            {
+                search.Candidates = candidates;
+                search.Inputs = inputs;
+                search.Result = candidates.FindWalls(__instance);
+                search.NextSearchTick = tick + ArtilleryTargets.SearchInterval;
+            }
+            __result = search.Result.Target;
+            if (!search.Result.HasTarget) __instance.ResetCurrentTarget();
         }
     }
 
