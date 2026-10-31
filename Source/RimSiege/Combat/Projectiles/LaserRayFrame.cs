@@ -44,7 +44,7 @@ namespace RimSiege.Combat.Projectiles
             Initialized = true;
             Ray = ray;
             Limit = Range;
-            Surface = FloorPlanes.Find(Map, ray.origin, ray.GetPoint(Range));
+            Surface = FloorPlanes.Find(Map, ray.origin, ray.GetPoint(Range), PlaneQuery.Contact);
             float bottom = IsoFloor.MinLevel(Map) * CombatHeights.StoreyCe;
             if (ray.direction.y < 0f)
             {

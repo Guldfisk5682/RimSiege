@@ -207,9 +207,15 @@ namespace RimSiege.Combat.Aiming
         }
     }
 
-    [HarmonyPatch(typeof(ProjectZ.Combat.Explosions3D), nameof(ProjectZ.Combat.Explosions3D.CellsToHit))]
+    [HarmonyPatch]
     internal static class IsoExplosionGeometryPatch
     {
+        // ProjectZ's allocating entry point delegates to a buffer overload in
+        // newer builds. Adapt the implementation wherever it lives.
+        private static IEnumerable<MethodBase> TargetMethods() =>
+            AccessTools.GetDeclaredMethods(typeof(ProjectZ.Combat.Explosions3D))
+                .Where(method => method.Name == nameof(ProjectZ.Combat.Explosions3D.CellsToHit));
+
         private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
         {
             MethodInfo storey = AccessTools.PropertyGetter(typeof(ProjectZ.Combat.Range3D), nameof(ProjectZ.Combat.Range3D.Storey));
