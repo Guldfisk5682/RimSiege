@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+  <Operation Class="PatchOperationAddModExtension">
+    <xpath>Defs/ThingDef[defName="Turret_RocketswarmLauncher"]</xpath>
+    <value>
+      <li Class="RimSiege.Combat.Aiming.ManualTurretControl" />
+    </value>
+  </Operation>
+</Patch>
