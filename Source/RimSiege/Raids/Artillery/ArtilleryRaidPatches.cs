@@ -37,7 +37,10 @@ namespace RimSiege.Raids.Artillery
 
         internal static LordJob MakeOriginalJob(ArtilleryRaid raid, Map map, List<Pawn> pawns)
         {
-            if (raid.Kind == ArtilleryRaidKind.Siege) return new LordJob_AssaultColony(raid.Faction);
+            // Mechanoid support uses StageThenAttack for arrival; after the battery is built
+            // transfer must assault immediately, not restage.
+            if (raid.Kind == ArtilleryRaidKind.Siege || raid.Kind == ArtilleryRaidKind.Mechanoid)
+                return new LordJob_AssaultColony(raid.Faction);
             bool previous = restoring;
             restoring = true;
             try
@@ -99,9 +102,8 @@ namespace RimSiege.Raids.Artillery
                     pawns.Count != RaidSpawnPatch.Current.Pawns.Count) return true;
                 raid.RaidSeed = raidSeed;
                 map.GetComponent<ArtilleryMap>().Register(raid, pawns);
-                // Mechanoid keeps the vanilla StageThenAttack / AssaultColony lord.
-                if (raid.Kind == ArtilleryRaidKind.Mechanoid) return true;
-                __result = new LordJob_Artillery(raid);
+                __result = raid.Kind == ArtilleryRaidKind.Mechanoid
+                    ? new LordJob_MechArtillery(raid) : new LordJob_Artillery(raid);
                 return false;
             }
         }

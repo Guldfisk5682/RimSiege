@@ -89,6 +89,7 @@ namespace RimSiege.Raids.Artillery
             raid.AssaultEnded = true;
             Lord camp = raid.CampLord;
             if (camp != null && map.lordManager.lords.Contains(camp)) camp.ReceiveMemo("ArtilleryRaidEnded");
+            else ArtilleryCamp.Abandon(raid, map);
         }
 
         internal void FinishIfEnded(ArtilleryRaid raid)

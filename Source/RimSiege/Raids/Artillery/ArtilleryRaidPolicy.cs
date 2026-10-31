@@ -34,21 +34,21 @@ namespace RimSiege.Raids.Artillery
             else if (parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttack ||
                 parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart) kind = "Ordinary";
             else return null;
-            return BuildRaid(parms, raidPoints, pawnPoints, map, kind, crewless: false);
+            return BuildRaid(parms, raidPoints, pawnPoints, map, kind);
         }
 
         private static ArtilleryRaid PrepareMechanoid(IncidentParms parms, float raidPoints, float pawnPoints, Map map)
         {
-            if (parms.raidStrategy?.Worker is not RaidStrategyWorker_StageThenAttack) return null;
+            if (!ModsConfig.BiotechActive || parms.raidStrategy?.Worker is not RaidStrategyWorker_StageThenAttack) return null;
             if (parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn &&
                 parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeDrop) return null;
             if (!parms.spawnCenter.IsValid || parms.attackTargets?.Count > 0 ||
                 (parms.pawnGroups?.Count ?? 0) > 0) return null;
-            return BuildRaid(parms, raidPoints, pawnPoints, map, "Mechanoid", crewless: true);
+            return BuildRaid(parms, raidPoints, pawnPoints, map, "Mechanoid");
         }
 
         private static ArtilleryRaid BuildRaid(IncidentParms parms, float raidPoints, float pawnPoints, Map map,
-            string kind, bool crewless)
+            string kind)
         {
             ArtilleryProfileDef profile = DefDatabase<ArtilleryProfileDef>.AllDefsListForReading
                 .FirstOrDefault(p => p.kind == kind);
@@ -56,6 +56,12 @@ namespace RimSiege.Raids.Artillery
                 !Rand.Chance(RimSiegeMod.Settings.ArtilleryChance / 10f)) return null;
 
             float personnel = profile.PersonnelPoints(raidPoints, pawnPoints);
+            int constructoids = 0;
+            if (kind == "Mechanoid")
+            {
+                constructoids = MechBattery.RollConstructoids();
+                personnel = UnityEngine.Mathf.Max(0f, personnel - MechBattery.ConstructoidCombatPower * constructoids);
+            }
             List<ArtilleryPlacement> guns = profile.Configure(raidPoints, personnel, parms.faction);
             if (guns.Count == 0) return null;
             IntVec3 goal = GenAI.RandomRaidDest(parms.spawnCenter, map);
@@ -68,15 +74,15 @@ namespace RimSiege.Raids.Artillery
                 ranges = guns.ToDictionary(g => g, g => CeArtillerySight.EffectiveRange(map, parms.faction,
                     new EmplacementSpec(g.Def, g.Stuff, g.Ammo, parms.spawnCenter, Rot4.North, null)));
             if (!CampPlanner.TryPlan(map, parms.faction, parms.spawnCenter, goal, guns,
-                Centers(map, parms.spawnCenter, siting, guns, ranges), siting, ranges, out CampPlan camp,
-                crewless)) return null;
+                Centers(map, parms.spawnCenter, siting, guns, ranges), siting, ranges, out CampPlan camp)) return null;
 
             var raid = new ArtilleryRaid
             {
                 Kind = (ArtilleryRaidKind)System.Enum.Parse(typeof(ArtilleryRaidKind), kind),
                 Phase = ArtilleryPhase.Planned, RaidPoints = raidPoints, PawnPoints = personnel,
                 Faction = parms.faction, Strategy = parms.raidStrategy, OriginalParms = parms,
-                Camp = camp, Rolled = true, Selected = true
+                Camp = camp, Rolled = true, Selected = true,
+                ConstructoidCount = constructoids
             };
             SupportRoute.Set(raid, route);
             return raid;

@@ -19,6 +19,8 @@ namespace RimSiege.Raids.Artillery
         internal readonly List<ArtilleryPlacement> Cover;
         internal readonly int Capacity;
         internal readonly int Openness;
+        // Arrival-time validation can use an autonomous battery's real builder.
+        internal Pawn ConstructionWorker;
         private readonly HashSet<IntVec3> interior = new();
         private readonly HashSet<IntVec3> clearCells = new();
         private readonly List<IntVec3> open = new();
@@ -53,60 +55,35 @@ namespace RimSiege.Raids.Artillery
             return (WorkAreas(clear), count == 0 ? 0 : openCount * 10 / count);
         }
 
-        internal readonly bool Crewless;
-
         internal CampField(Map map, IntVec3 center, IntVec3 anchor, List<ArtilleryPlacement> cover,
-            Dictionary<IntVec3, bool> terrain, Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements,
-            bool crewless = false)
+            Dictionary<IntVec3, bool> terrain, Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements)
         {
-            Map = map; Center = center; Cover = cover; this.placements = placements; Crewless = crewless;
+            Map = map; Center = center; Cover = cover; this.placements = placements;
             IntVec3 goal = IsoFloor.HasFloors(map) ? IsoFloor.GroundCellOf(anchor, map) : anchor;
             IntVec3 ground = IsoFloor.HasFloors(map) ? IsoFloor.GroundCellOf(center, map) : center;
             forward = new Vector2(goal.x - ground.x, goal.z - ground.z).normalized;
             right = new Vector2(forward.y, -forward.x);
-            if (crewless)
-                rotations = new[] { Rot4.North };
-            else
-            {
-                Rot4 horizontal = forward.x >= 0 ? Rot4.East : Rot4.West;
-                Rot4 vertical = forward.y >= 0 ? Rot4.North : Rot4.South;
-                rotations = Math.Abs(forward.x) > Math.Abs(forward.y)
-                    ? new[] { horizontal, vertical } : new[] { vertical, horizontal };
-            }
+            Rot4 horizontal = forward.x >= 0 ? Rot4.East : Rot4.West;
+            Rot4 vertical = forward.y >= 0 ? Rot4.North : Rot4.South;
+            rotations = Math.Abs(forward.x) > Math.Abs(forward.y)
+                ? new[] { horizontal, vertical } : new[] { vertical, horizontal };
 
+            // Native cover consists of open L segments, not a closed wall.
+            // Its convex envelope bounds the battery without treating it as a
+            // collision barrier or inventing additional cover blueprints.
+            var coverCells = new HashSet<IntVec3>(cover.SelectMany(p => GenAdj.OccupiedRect(p.Cell, p.Rotation, p.Def.Size)));
+            List<IntVec2> hull = Hull(coverCells);
             bool floors = IsoFloor.HasFloors(map);
             int floor = floors ? IsoFloor.FloorOf(center, map) : 0;
             CellRect area = CellRect.CenteredOn(center, CampPlanner.GunAreaRadius);
             area.ClipInsideMap(map);
-            if (crewless)
+            foreach (IntVec3 cell in area)
             {
-                // No sandbag hull: the gun area itself is the battery interior.
-                foreach (IntVec3 cell in area)
-                {
-                    if (floors && IsoFloor.FloorOf(cell, map) != floor) continue;
-                    if (!terrain.TryGetValue(cell, out bool clear))
-                        terrain[cell] = clear = cell.Walkable(map) && IsoFloor.OpenSkyOver(cell, map);
-                    if (!clear) continue;
-                    interior.Add(cell);
-                    open.Add(cell);
-                    clearCells.Add(cell);
-                }
-            }
-            else
-            {
-                // Native cover consists of open L segments, not a closed wall.
-                // Its convex envelope bounds the battery without treating it as a
-                // collision barrier or inventing additional cover blueprints.
-                var coverCells = new HashSet<IntVec3>(cover.SelectMany(p => GenAdj.OccupiedRect(p.Cell, p.Rotation, p.Def.Size)));
-                List<IntVec2> hull = Hull(coverCells);
-                foreach (IntVec3 cell in area)
-                {
-                    if (floors && IsoFloor.FloorOf(cell, map) != floor || !ContainsCell(hull, cell)) continue;
-                    interior.Add(cell);
-                    if (!terrain.TryGetValue(cell, out bool clear))
-                        terrain[cell] = clear = cell.Walkable(map) && !cell.Roofed(map);
-                    if (clear && !coverCells.Contains(cell)) { open.Add(cell); clearCells.Add(cell); }
-                }
+                if (floors && IsoFloor.FloorOf(cell, map) != floor || !ContainsCell(hull, cell)) continue;
+                interior.Add(cell);
+                if (!terrain.TryGetValue(cell, out bool clear))
+                    terrain[cell] = clear = cell.Walkable(map) && !cell.Roofed(map);
+                if (clear && !coverCells.Contains(cell)) { open.Add(cell); clearCells.Add(cell); }
             }
             // Count separated, locally open work areas. This is a cheap site
             // ranking, not a replacement for native placement or path checks.
@@ -139,18 +116,12 @@ namespace RimSiege.Raids.Artillery
                 foreach (Rot4 rotation in rotations)
                 {
                     CellRect footprint = GenAdj.OccupiedRect(cell, rotation, template.Def.Size);
-                    if (!footprint.All(clearCells.Contains)) continue;
-                    if (!Crewless)
-                    {
-                        IntVec3 work = ThingUtility.InteractionCellWhenAt(template.Def, cell, rotation, Map);
-                        if (!clearCells.Contains(work)) continue;
-                    }
+                    IntVec3 work = ThingUtility.InteractionCellWhenAt(template.Def, cell, rotation, Map);
+                    if (!clearCells.Contains(work) || !footprint.All(clearCells.Contains)) continue;
                     var placement = (template.Def, template.Stuff, rotation, cell);
                     if (!placements.TryGetValue(placement, out bool valid))
-                    {
-                        var item = new ArtilleryPlacement { Def = template.Def, Stuff = template.Stuff, Cell = cell, Rotation = rotation };
-                        placements[placement] = valid = Crewless ? CampPlanner.CanLand(Map, item) : CampPlanner.CanPlace(Map, item);
-                    }
+                        placements[placement] = valid = CampPlanner.CanPlace(Map,
+                            new ArtilleryPlacement { Def = template.Def, Stuff = template.Stuff, Cell = cell, Rotation = rotation });
                     if (valid) available.Add(new Slot(cell, rotation));
                 }
             }

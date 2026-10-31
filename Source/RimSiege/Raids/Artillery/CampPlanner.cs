@@ -30,8 +30,7 @@ namespace RimSiege.Raids.Artillery
 
         internal static bool TryPlan(Map map, Faction faction, IntVec3 entry, IntVec3 goal,
             IEnumerable<ArtilleryPlacement> guns, IEnumerable<IntVec3> centers,
-            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> effectiveRanges, out CampPlan plan,
-            bool crewless = false)
+            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> effectiveRanges, out CampPlan plan)
         {
             plan = null;
             var templates = guns.ToList();
@@ -111,7 +110,7 @@ namespace RimSiege.Raids.Artillery
                 while (queue.Count > 0)
                 {
                     CampCandidate candidate = BuildCandidate(map, faction, entry, goal, queue.Dequeue(),
-                        siting, effectiveRanges, terrain, placements, crewless);
+                        siting, effectiveRanges, terrain, placements);
                     if (candidate != null) return candidate;
                 }
                 return null;
@@ -120,20 +119,13 @@ namespace RimSiege.Raids.Artillery
 
         private static CampCandidate BuildCandidate(Map map, Faction faction, IntVec3 entry, IntVec3 goal,
             Site site, CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> ranges,
-            Dictionary<IntVec3, bool> terrain, Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements,
-            bool crewless)
+            Dictionary<IntVec3, bool> terrain, Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements)
         {
-            List<ArtilleryPlacement> cover;
-            if (crewless)
-                cover = new List<ArtilleryPlacement>();
-            else
-            {
-                cover = VanillaSiegeCover.Plan(map, faction, site.Center)
-                    .Select(item => new ArtilleryPlacement { Def = item.Def, Stuff = item.Stuff,
-                        Cell = item.Cell, Rotation = item.Rotation }).ToList();
-                if (cover.Count == 0) return null;
-            }
-            var field = new CampField(map, site.Center, siting.BreachAnchor, cover, terrain, placements, crewless);
+            var cover = VanillaSiegeCover.Plan(map, faction, site.Center)
+                .Select(item => new ArtilleryPlacement { Def = item.Def, Stuff = item.Stuff,
+                    Cell = item.Cell, Rotation = item.Rotation }).ToList();
+            if (cover.Count == 0) return null;
+            var field = new CampField(map, site.Center, siting.BreachAnchor, cover, terrain, placements);
             if (field.Capacity == 0) return null;
             var plan = new CampPlan { Center = field.Center, Goal = goal, Cover = field.Cover };
             var retained = new List<ArtilleryPlacement>();
@@ -237,15 +229,22 @@ namespace RimSiege.Raids.Artillery
         internal static bool Revalidate(Map map, ArtilleryRaid raid, CampPlan plan, CampSiting siting)
         {
             if (siting.Targets.Count == 0) return false;
-            plan.Guns.RemoveAll(g => g.Operator == null || !g.Operator.Spawned || g.Operator.Map != map);
+            var job = (LordJob_Artillery)raid.CampLord.LordJob;
+            if (job.RequiresOperators)
+                plan.Guns.RemoveAll(g => g.Operator == null || !g.Operator.Spawned || g.Operator.Map != map);
             var templates = plan.Guns.ToList();
+            if (templates.Count == 0) return false;
             var ranges = templates.ToDictionary(g => g, g => CeArtillerySight.EffectiveRange(map, raid.Faction, Spec(g)));
             var cache = new Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool>();
-            var field = new CampField(map, plan.Center, siting.BreachAnchor, plan.Cover, new(), cache);
+            var field = new CampField(map, plan.Center, siting.BreachAnchor, plan.Cover, new(), cache)
+            {
+                ConstructionWorker = job.ConstructionWorker
+            };
             float bearing = siting.Bearing(plan.Center);
             var candidate = new CampCandidate(plan, field, templates, bearing, Sector(bearing), 0f, 0f);
             int rounds = 0;
-            return ValidateAndRepair(map, raid.Faction, IntVec3.Invalid, candidate, siting, ranges, true, ref rounds);
+            IntVec3 entry = field.ConstructionWorker?.Position ?? IntVec3.Invalid;
+            return ValidateAndRepair(map, raid.Faction, entry, candidate, siting, ranges, job.RequiresOperators, ref rounds);
         }
 
         private static bool ValidateAndRepair(Map map, Faction faction, IntVec3 entry, CampCandidate candidate,
@@ -259,7 +258,7 @@ namespace RimSiege.Raids.Artillery
                 rounds++;
                 if (!ValidateLayout(map, faction, entry, candidate, siting, ranges, actual,
                     out HashSet<ArtilleryPlacement> failed, out bool lostFront)) return false;
-                if (failed.Count == 0) return KeepSuppliedSubset(map, plan, siting, templates, ranges, candidate.Field.Crewless);
+                if (failed.Count == 0) return KeepSuppliedSubset(map, plan, siting, templates, ranges);
                 var originalGuns = plan.Guns.ToList();
                 var originalTemplates = templates.ToList();
                 candidate.Remove(failed);
@@ -286,7 +285,7 @@ namespace RimSiege.Raids.Artillery
                 if (reinserted > 0) continue;
                 // Only already validated survivors remain. Removal cannot block
                 // their paths; check retreat again before selecting a supplied set.
-                return KeepSuppliedSubset(map, plan, siting, templates, ranges, candidate.Field.Crewless);
+                return KeepSuppliedSubset(map, plan, siting, templates, ranges);
             }
             return false;
         }
@@ -315,8 +314,7 @@ namespace RimSiege.Raids.Artillery
         // Removing planned obstacles cannot obstruct those paths. Keep the same
         // direct-first priority as candidate ranking; mortars remain a fallback.
         private static bool KeepSuppliedSubset(Map map, CampPlan plan, CampSiting siting,
-            List<ArtilleryPlacement> templates, IReadOnlyDictionary<ArtilleryPlacement, float> ranges,
-            bool crewless)
+            List<ArtilleryPlacement> templates, IReadOnlyDictionary<ArtilleryPlacement, float> ranges)
         {
             var guns = plan.Guns.ToList();
             var originals = templates.ToList();
@@ -343,7 +341,7 @@ namespace RimSiege.Raids.Artillery
                 MarkRetreatFailures(plan, siting, templates, ranges, failed);
                 for (int i = plan.Guns.Count - 1; i >= 0; i--)
                     if (failed.Contains(plan.Guns[i])) { plan.Guns.RemoveAt(i); templates.RemoveAt(i); }
-                return plan.Guns.Count > 0 && (crewless || CampSupplies.CanSupply(map, plan));
+                return plan.Guns.Count > 0 && CampSupplies.CanSupply(map, plan);
             }
         }
 
@@ -364,21 +362,6 @@ namespace RimSiege.Raids.Artillery
             GenConstruct.CanPlaceBlueprintAt_NewTemp(item.Def, item.Cell, item.Rotation, map,
                 false, null, null, item.Stuff, ignoreEdgeArea: true).Accepted;
 
-        internal static bool CanLand(Map map, ArtilleryPlacement item)
-        {
-            if (item.Def == null || !item.Cell.InBounds(map)) return false;
-            if (!DropCellFinder.SkyfallerCanLandAt(item.Cell, map, item.Def.size)) return false;
-            CellRect rect = GenAdj.OccupiedRect(item.Cell, Rot4.North, item.Def.Size);
-            int floor = IsoFloor.HasFloors(map) ? IsoFloor.FloorOf(item.Cell, map) : 0;
-            foreach (IntVec3 cell in rect)
-            {
-                if (!cell.InBounds(map)) return false;
-                if (IsoFloor.HasFloors(map) && IsoFloor.FloorOf(cell, map) != floor) return false;
-                if (!IsoFloor.OpenSkyOver(cell, map)) return false;
-            }
-            return true;
-        }
-
         private static bool LayoutValid(Map map, IntVec3 entry, CampPlan plan, bool actual, bool precise, CampField field, out ArtilleryPlacement failed)
         {
             if (!LayoutFailures(map, entry, plan, actual, precise, field, out HashSet<ArtilleryPlacement> failures))
@@ -396,11 +379,10 @@ namespace RimSiege.Raids.Artillery
             var occupied = new HashSet<IntVec3>();
             var impassable = new HashSet<IntVec3>();
             var reserved = new HashSet<IntVec3>();
-            bool crewless = field.Crewless;
             foreach (ArtilleryPlacement item in plan.Cover.Concat(plan.Guns))
             {
                 bool gun = plan.Guns.Contains(item);
-                if (precise && !(crewless ? CanLand(map, item) : CanPlace(map, item)))
+                if (precise && !CanPlace(map, item))
                 {
                     if (!gun) return false;
                     failed.Add(item);
@@ -419,19 +401,13 @@ namespace RimSiege.Raids.Artillery
             {
                 if (failed.Contains(gun)) continue;
                 if (!GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size).All(field.Contains) ||
-                    !FitsOtherGuns(plan, gun)) { failed.Add(gun); continue; }
-                if (crewless)
-                {
-                    if (!CanLand(map, gun)) failed.Add(gun);
-                    continue;
-                }
-                if (gun.Cell.Roofed(map)) { failed.Add(gun); continue; }
+                    gun.Cell.Roofed(map) || !FitsOtherGuns(plan, gun)) { failed.Add(gun); continue; }
                 IntVec3 interaction = ThingUtility.InteractionCellWhenAt(gun.Def, gun.Cell, gun.Rotation, map);
                 if (!field.Contains(interaction) || !interaction.Walkable(map) ||
                     (occupied.Contains(interaction) && !GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size).Contains(interaction)) || !reserved.Add(interaction))
                 { failed.Add(gun); continue; }
                 IntVec3 start = actual ? gun.Operator?.Position ?? IntVec3.Invalid : entry;
-                Pawn pawn = actual ? gun.Operator : null;
+                Pawn pawn = actual ? gun.Operator : field.ConstructionWorker;
                 var blockers = new HashSet<IntVec3>(impassable);
                 blockers.Remove(interaction);
                 if (!(precise ? Reachable(map, start, interaction, blockers, pawn) : CanReach(map, start, interaction, pawn)))

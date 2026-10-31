@@ -5,7 +5,7 @@ using Verse.AI.Group;
 
 namespace RimSiege.Raids.Artillery
 {
-    public sealed class LordJob_Artillery : LordJob_Siege
+    public class LordJob_Artillery : LordJob_Siege
     {
         private int raidKey;
         private ArtilleryRaidKind kind;
@@ -24,6 +24,17 @@ namespace RimSiege.Raids.Artillery
         internal int RaidKey => raidKey;
         internal ArtilleryRaid Raid => Map.GetComponent<ArtilleryMap>().ForKey(raidKey);
         internal bool IsNativeAssault => kind == ArtilleryRaidKind.Siege && lord?.CurLordToil is LordToil_AssaultColony;
+
+        internal virtual bool RequiresOperators => true;
+        internal virtual Pawn ConstructionWorker => null;
+        internal virtual bool PrepareCrew() => ArtilleryCamp.AssignOperators(Raid, lord);
+        internal virtual bool CanBeBuilder(Pawn pawn, bool nativeResult) => nativeResult;
+        // Return true when the subclass has assigned the duty itself.
+        internal virtual bool AssignBuilder(LordToil_Siege toil, Pawn pawn) => false;
+        internal virtual void PrepareCleanup(LordToil_Siege toil) { }
+
+        internal virtual void IssueAssaultKit(Pawn pawn, SiegeParty party) =>
+            Map.GetComponent<SiegeRaidMap>().Issue(pawn, party);
 
         public override StateGraph CreateGraph()
         {

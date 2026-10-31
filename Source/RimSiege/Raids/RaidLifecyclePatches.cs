@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using RimSiege.Integration;
 using RimSiege.Raids.Artillery;
@@ -28,11 +30,6 @@ namespace RimSiege.Raids
         private static void Postfix(IncidentParms parms, bool __result)
         {
             if (!__result || Current?.Pawns == null || parms.target is not Map map) return;
-            if (Current.Artillery?.Kind == ArtilleryRaidKind.Mechanoid)
-            {
-                MechBattery.Deploy(Current.Artillery, map);
-                return;
-            }
             if (Current.Artillery != null || parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttack ||
                 parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart ||
                 parms.raidStrategy.Worker is RaidStrategyWorker_StageThenAttack ||
@@ -49,9 +46,42 @@ namespace RimSiege.Raids
     [HarmonyPatch(typeof(IncidentWorker_Raid), nameof(IncidentWorker_Raid.TryGenerateRaidInfo))]
     internal static class RaidRosterPatch
     {
-        private static void Postfix(List<Pawn> pawns, bool __result)
+        // Vanilla arrives the roster inside TryGenerateRaidInfo before Postfix.
+        // Wrap Arrive so Constructoids are on the list before drop-pods / edge walk-in.
+        private static void ArriveWithConstructoids(PawnsArrivalModeWorker worker, List<Pawn> pawns,
+            IncidentParms parms)
         {
-            if (__result && RaidSpawnPatch.Current != null) RaidSpawnPatch.Current.Pawns = pawns;
+            MechBattery.InjectConstructoids(RaidSpawnPatch.Current?.Artillery, pawns);
+            worker.Arrive(pawns, parms);
+        }
+
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo arrive = AccessTools.Method(typeof(PawnsArrivalModeWorker), nameof(PawnsArrivalModeWorker.Arrive));
+            MethodInfo wrap = AccessTools.Method(typeof(RaidRosterPatch), nameof(ArriveWithConstructoids));
+            foreach (CodeInstruction code in instructions)
+            {
+                if (code.Calls(arrive))
+                {
+                    code.opcode = OpCodes.Call;
+                    code.operand = wrap;
+                }
+                yield return code;
+            }
+        }
+
+        private static void Postfix(IncidentParms parms, List<Pawn> pawns, bool __result, bool debugTest)
+        {
+            if (!__result || RaidSpawnPatch.Current == null) return;
+            // SpawnThreats path can skip Arrive; inject then land any still-unspawned.
+            int before = pawns.Count;
+            if (!debugTest) MechBattery.InjectConstructoids(RaidSpawnPatch.Current.Artillery, pawns);
+            if (pawns.Count > before && parms?.raidArrivalMode != null)
+            {
+                var late = pawns.Skip(before).Where(p => p != null && !p.Spawned).ToList();
+                if (late.Count > 0) parms.raidArrivalMode.Worker.Arrive(late, parms);
+            }
+            RaidSpawnPatch.Current.Pawns = pawns;
         }
     }
 

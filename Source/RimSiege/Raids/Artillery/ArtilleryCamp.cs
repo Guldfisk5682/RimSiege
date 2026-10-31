@@ -40,7 +40,9 @@ namespace RimSiege.Raids.Artillery
         {
             Map map = lord.Map;
             SupportRoute route = SupportRoute.Restore(map, raid);
-            return route != null && AssignOperators(raid, lord) && CampPlanner.Revalidate(map, raid, raid.Camp, route.PlanningTargets());
+            if (route == null) return false;
+            if (!((LordJob_Artillery)lord.LordJob).PrepareCrew()) return false;
+            return CampPlanner.Revalidate(map, raid, raid.Camp, route.PlanningTargets());
         }
 
         internal static List<Blueprint_Build> Blueprints(ArtilleryRaid raid, Lord lord)
@@ -72,6 +74,13 @@ namespace RimSiege.Raids.Artillery
                 if (raid.Camp.Guns.Contains(item))
                 {
                     building.Map.GetComponent<ArtilleryMap>().TrackGun(building, raid);
+                    // Mech cluster turrets ship with CompCanBeDormant/CompMechanoid; construction
+                    // leaves them usable only once awake. Force wake so they fight immediately.
+                    if (newlyObserved)
+                    {
+                        building.TryGetComp<CompCanBeDormant>()?.WakeUp();
+                        building.TryGetComp<CompWakeUpDormant>()?.Activate(building, sendSignal: false, silent: true, instant: true);
+                    }
                     if (newlyObserved && building is Building_TurretGunCE turret && item.Ammo is AmmoDef ammo && turret.GetAmmo() is CompAmmoUser user)
                     {
                         // A freshly built turret starts loaded with its default shell;
@@ -145,11 +154,13 @@ namespace RimSiege.Raids.Artillery
             if (raid.AssaultLord == null) raid.AssaultLord = ArtilleryRaidPatches.MakeOriginalLord(raid, camp.Map, pawns);
             else raid.AssaultLord.AddPawns(pawns);
             raid.AssaultCreated = true;
+            if (!((LordJob_Artillery)camp.LordJob).RequiresOperators) raid.InfantryReleased = true;
             SiegeRaidMap raids = camp.Map.GetComponent<SiegeRaidMap>();
             foreach (Pawn pawn in pawns)
             {
                 SiegeParty party = raids.Party(pawn);
-                if (party != null) raids.Issue(pawn, party);
+                if (party == null) continue;
+                ((LordJob_Artillery)camp.LordJob).IssueAssaultKit(pawn, party);
             }
         }
 
@@ -168,6 +179,7 @@ namespace RimSiege.Raids.Artillery
 
         internal static void RefreshOperators(ArtilleryRaid raid, Lord camp)
         {
+            if (!((LordJob_Artillery)camp.LordJob).RequiresOperators) return;
             var released = new List<Pawn>();
             foreach (ArtilleryPlacement gun in raid.Camp.Guns)
             {
@@ -196,12 +208,14 @@ namespace RimSiege.Raids.Artillery
             foreach (Pawn pawn in lord.ownedPawns)
             {
                 SiegeParty party = raids.Party(pawn);
-                if (party != null) raids.Issue(pawn, party);
+                if (party == null) continue;
+                ((LordJob_Artillery)lord.LordJob).IssueAssaultKit(pawn, party);
             }
         }
 
         internal static void ReassignOperators(ArtilleryRaid raid, Lord camp, Pawn excluded = null)
         {
+            if (!((LordJob_Artillery)camp.LordJob).RequiresOperators) return;
             if (raid.AssaultEnded || camp.CurLordToil is not LordToil_Siege toil) return;
             Lord assault = raid.AssaultLord;
             if (assault != null && !camp.Map.lordManager.lords.Contains(assault)) assault = null;
@@ -227,16 +241,58 @@ namespace RimSiege.Raids.Artillery
             }
         }
 
+        internal static bool AssaultStillLive(ArtilleryRaid raid, Map map) =>
+            raid != null && !raid.AssaultEnded && raid.AssaultLord != null &&
+            map != null && map.lordManager.lords.Contains(raid.AssaultLord);
+
+        // Vanilla LordToil_Siege.Cleanup SetFaction(null)s every ownedBuilding before our
+        // Abandon postfix. Reclaim guns that should keep firing with the assault wave.
+        internal static void RetainHostileBattery(ArtilleryRaid raid, Map map)
+        {
+            // The mechanical subclass detaches its guns before native Cleanup.
+            if (raid?.Camp == null || map == null || raid.Faction == null || raid.Kind == ArtilleryRaidKind.Mechanoid) return;
+            if (!AssaultStillLive(raid, map)) return;
+            int restored = 0;
+            foreach (ArtilleryPlacement item in Placements(raid.Camp))
+            {
+                Building building = item.Building;
+                if (building == null || !building.Spawned || building.Destroyed) continue;
+                if (building.Faction != raid.Faction)
+                {
+                    building.SetFaction(raid.Faction);
+                    restored++;
+                }
+                building.TryGetComp<CompCanBeDormant>()?.WakeUp();
+                building.TryGetComp<CompWakeUpDormant>()?.Activate(building, sendSignal: false, silent: true, instant: true);
+            }
+            if (restored != 0)
+                Log.Message("[RimSiege] Restored faction on " + restored + " artillery building(s) after siege Cleanup.");
+        }
+
+        // Camp lord emptied after TransferToAssault must NOT salvage guns yet: mechanoid
+        // batteries stay hostile and fire while the assault lord is still alive.
         internal static void Abandon(ArtilleryRaid raid, Map map)
         {
             ArtilleryTargeting.ForgetRaid(raid);
             if (raid.Camp == null || raid.Phase == ArtilleryPhase.Abandoned) return;
+            // GotoToil cleans the siege before initializing the transfer toil.
+            // Keep the autonomous battery registered across that handoff gap.
+            bool retainBattery = AssaultStillLive(raid, map) ||
+                (raid.Kind == ArtilleryRaidKind.Mechanoid && !raid.AssaultEnded && raid.CampLord != null &&
+                 map.lordManager.lords.Contains(raid.CampLord));
             foreach (ArtilleryPlacement item in Placements(raid.Camp))
             {
                 item.Operator = null;
                 if (item.Building == null) continue;
+                if (retainBattery) continue;
                 map.GetComponent<ArtilleryMap>().ForgetGun(item.Building);
-                if (item.Building.Spawned && item.Building.Faction == raid.Faction) item.Building.SetFaction(null);
+                if (raid.Kind != ArtilleryRaidKind.Mechanoid && item.Building.Spawned && item.Building.Faction == raid.Faction)
+                    item.Building.SetFaction(null);
+            }
+            if (retainBattery)
+            {
+                if (raid.Phase != ArtilleryPhase.Assaulting) raid.Phase = ArtilleryPhase.Assaulting;
+                return;
             }
             raid.Phase = ArtilleryPhase.Abandoned;
         }

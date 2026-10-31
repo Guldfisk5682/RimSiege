@@ -102,9 +102,26 @@ namespace RimSiege.Raids
         {
             if (party.Issued >= (party.InitialCount * party.LadderQuotaPercent + 99) / 100 ||
                 LadderInventory.Get(pawn) != null || !SiegeRoles.Eligible(pawn, party)) return;
+            GiveLadder(pawn, party);
+        }
+
+        // Artillery Constructoids always carry a ladder after build/interrupt transfer.
+        internal void ForceIssue(Pawn pawn, SiegeParty party)
+        {
+            if (pawn == null || party == null || LadderInventory.Get(pawn) != null) return;
+            if (!pawn.Spawned || pawn.Dead || pawn.Downed || pawn.inventory == null) return;
+            GiveLadder(pawn, party);
+        }
+
+        private void GiveLadder(Pawn pawn, SiegeParty party)
+        {
             LadderKit kit = (LadderKit)ThingMaker.MakeThing(SiegeDefOf.RS_LadderKit);
             kit.RaidId = party.Id;
-            pawn.inventory.innerContainer.TryAdd(kit, false);
+            if (!pawn.inventory.innerContainer.TryAdd(kit, false))
+            {
+                kit.Destroy(DestroyMode.Vanish);
+                return;
+            }
             party.Issued++;
         }
 

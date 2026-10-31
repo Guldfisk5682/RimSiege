@@ -33,9 +33,13 @@ namespace RimSiege.Raids.Artillery
             AccessTools.MethodDelegate<Action<LordToil_Siege, Pawn>>(AccessTools.Method(typeof(LordToil_Siege), "SetAsDefender"));
         private static readonly Action<LordToil_Siege, ThingDef, int> DropSupplies =
             AccessTools.MethodDelegate<Action<LordToil_Siege, ThingDef, int>>(AccessTools.Method(typeof(LordToil_Siege), "DropSupplies"));
+        private static readonly AccessTools.FieldRef<LordToil, LordToilData> ToilData =
+            AccessTools.FieldRefAccess<LordToil, LordToilData>("data");
 
         internal static ArtilleryRaid Raid(Lord lord) => lord?.Map?.GetComponent<ArtilleryMap>().ForLord(lord);
         internal static ArtilleryRaid Raid(LordToil_Siege toil) => Raid(toil?.lord);
+        internal static LordToilData_Siege Data(LordToil_Siege toil) => (LordToilData_Siege)ToilData(toil);
+        internal static void AssignDefenderDuty(LordToil_Siege toil, Pawn pawn) => SetDefender(toil, pawn);
 
         // The original Init owns the enumeration and its material/ammo drop list.
         internal static IEnumerable<Blueprint_Build> Blueprints(IntVec3 center, Map map, Faction faction, float points)
@@ -105,11 +109,14 @@ namespace RimSiege.Raids.Artillery
                 if (memo == "NoArtillery" && raid.Camp.Guns.Any(g => g.Building != null && g.Building.Spawned &&
                     g.Building.Faction == raid.Faction)) return;
                 if (memo == "NoBuilders" && raid.Kind != ArtilleryRaidKind.Siege &&
-                    raid.Camp.Guns.Any(g => g.Building != null && g.Building.Spawned && g.Operator != null &&
-                        g.Operator.Spawned && !g.Operator.Dead && !g.Operator.Downed && lord.ownedPawns.Contains(g.Operator)))
+                    (raid.Camp.Guns.Any(g => g.Building != null && g.Building.Spawned && g.Operator != null &&
+                        g.Operator.Spawned && !g.Operator.Dead && !g.Operator.Downed && lord.ownedPawns.Contains(g.Operator))
+                     || (raid.Kind == ArtilleryRaidKind.Mechanoid && raid.Phase == ArtilleryPhase.Supporting &&
+                         raid.Camp.Guns.Any(g => g.Building != null && g.Building.Spawned && g.Building.Faction == raid.Faction))))
                 {
                     // Losing the last builder updates native duties before the
                     // harm signal. Defer that handoff so completed guns keep crew.
+                    // Mechanoid Supporting: guns are autonomous; ignore NoBuilders.
                     if (raid.Phase == ArtilleryPhase.Building && !raid.InfantryReleased)
                     {
                         ((LordJob_Artillery)lord.LordJob).NotifyInterference();
@@ -248,6 +255,7 @@ namespace RimSiege.Raids.Artillery
         private static bool Prefix(LordToil_Siege __instance, Pawn p)
         {
             ArtilleryRaid raid = NativeSiege.Raid(__instance);
+            if (__instance.lord.LordJob is LordJob_Artillery job && job.AssignBuilder(__instance, p)) return false;
             if (raid == null || raid.Kind == ArtilleryRaidKind.Siege || !raid.InfantryReleased ||
                 raid.Phase != ArtilleryPhase.Supporting || !p.WorkTypeIsDisabled(WorkTypeDefOf.Construction) ||
                 !raid.Camp.Guns.Any(g => g.Operator == p)) return true;
@@ -257,10 +265,22 @@ namespace RimSiege.Raids.Artillery
 
         private static void Postfix(LordToil_Siege __instance, Pawn p)
         {
+            if (__instance.lord.LordJob is LordJob_Artillery job && !job.RequiresOperators) return;
             ArtilleryRaid raid = NativeSiege.Raid(__instance);
-            if (raid == null || p.WorkTypeIsDisabled(WorkTypeDefOf.Construction)) return;
+            if (raid == null || p.WorkTypeIsDisabled(WorkTypeDefOf.Construction) || p.skills == null) return;
             int level = ArtilleryCamp.Placements(raid.Camp).Select(item => item.Def.constructionSkillPrerequisite).DefaultIfEmpty(0).Max();
             p.skills.GetSkill(SkillDefOf.Construction).EnsureMinLevelWithMargin(level);
+        }
+    }
+
+    // Native eligibility alone does not distinguish hostile combat mechs from builders.
+    [HarmonyPatch(typeof(LordToil_Siege), "CanBeBuilder")]
+    internal static class NativeSiegeCanBeBuilderPatch
+    {
+        private static void Postfix(LordToil_Siege __instance, Pawn p, ref bool __result)
+        {
+            if (__instance.lord.LordJob is LordJob_Artillery job)
+                __result = job.CanBeBuilder(p, __result);
         }
     }
 
@@ -292,7 +312,15 @@ namespace RimSiege.Raids.Artillery
     [HarmonyPatch(typeof(LordToil_Siege), nameof(LordToil_Siege.UpdateAllDuties))]
     internal static class NativeSiegeDutiesPatch
     {
-        private static void Postfix(LordToil_Siege __instance) => NativeSiege.AssignGunners(__instance);
+        private static void Postfix(LordToil_Siege __instance)
+        {
+            NativeSiege.AssignGunners(__instance);
+            // Remembered native Build duties are counted without rechecking
+            // eligibility. The last constructoid can be downed or disabled.
+            if (__instance.lord.CurLordToil == __instance &&
+                __instance.lord.LordJob is LordJob_Artillery job && !job.RequiresOperators && job.ConstructionWorker == null)
+                NativeSiege.Memo(__instance.lord, "NoBuilders", __instance);
+        }
     }
 
     [HarmonyPatch(typeof(SiegeUtility), "UniqueArtilleryDefs")]
@@ -368,10 +396,18 @@ namespace RimSiege.Raids.Artillery
     [HarmonyPatch(typeof(LordToil_Siege), nameof(LordToil_Siege.Cleanup))]
     internal static class NativeSiegeCleanupPatch
     {
+        private static void Prefix(LordToil_Siege __instance)
+        {
+            if (__instance.lord.LordJob is LordJob_Artillery job) job.PrepareCleanup(__instance);
+        }
+
         private static void Postfix(LordToil_Siege __instance)
         {
             ArtilleryRaid raid = NativeSiege.Raid(__instance);
-            if (raid != null) ArtilleryCamp.Abandon(raid, __instance.lord.Map);
+            if (raid == null) return;
+            Map map = __instance.lord.Map;
+            ArtilleryCamp.RetainHostileBattery(raid, map);
+            ArtilleryCamp.Abandon(raid, map);
         }
     }
 
