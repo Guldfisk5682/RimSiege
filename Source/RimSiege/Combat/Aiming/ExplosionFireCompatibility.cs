@@ -162,12 +162,6 @@ namespace RimSiege.Combat.Aiming
             }
         }
 
-        public static Vector3 FleckPosition(Thing thing)
-        {
-            if (thing is ProjectileCE projectile && IsoFloor.HasFloors(thing.Map) && IsoView.Ready)
-                return VisualCoordinates.Projectile(CeAccess.ProjectilePosition(projectile), thing.def.Altitude, thing.Map);
-            return thing.DrawPos;
-        }
     }
 
     [HarmonyPatch]
@@ -432,23 +426,4 @@ namespace RimSiege.Combat.Aiming
         }
     }
 
-    [HarmonyPatch]
-    internal static class ProjectileFlameFlecksPatch
-    {
-        private static IEnumerable<MethodBase> TargetMethods() => CeAccess.Methods(typeof(CompProjectileFleck), "CompTick", "Emit");
-
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
-            MethodInfo draw = AccessTools.PropertyGetter(typeof(Thing), nameof(Thing.DrawPos));
-            foreach (CodeInstruction c in instructions)
-            {
-                if (c.Calls(draw))
-                {
-                    c.opcode = OpCodes.Call;
-                    c.operand = AccessTools.Method(typeof(ExplosionFireCompatibility), nameof(ExplosionFireCompatibility.FleckPosition));
-                }
-                yield return c;
-            }
-        }
-    }
 }

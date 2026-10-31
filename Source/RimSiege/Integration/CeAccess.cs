@@ -25,6 +25,12 @@ namespace RimSiege.Integration
         public static Vector3 ProjectilePosition(ProjectileCE projectile) => ExactPosition(projectile);
 
         internal static readonly AccessTools.FieldRef<ProjectileCE, Vector3> Last = AccessTools.FieldRefAccess<ProjectileCE, Vector3>("LastPos");
+        internal static readonly AccessTools.FieldRef<ProjectileCE, Vector3> Velocity = AccessTools.FieldRefAccess<ProjectileCE, Vector3>("velocity");
+        internal static readonly AccessTools.FieldRef<CompProjectileFleck, Vector3> FleckLast =
+            AccessTools.FieldRefAccess<CompProjectileFleck, Vector3>("lastPos");
+        internal static readonly Action<Vector3, float, Map, string> ThrowTrailSmoke =
+            AccessTools.MethodDelegate<Action<Vector3, float, Map, string>>(
+                AccessTools.Method(typeof(ProjectileCE).Assembly.GetType("ProjectileImpactFX.TrailThrower"), "ThrowSmoke"));
         internal static readonly Action<ProjectileCE, Vector3> SetExact = AccessTools.MethodDelegate<Action<ProjectileCE, Vector3>>(AccessTools.PropertySetter(typeof(ProjectileCE), "ExactPosition"));
         internal static readonly Func<ProjectileCE, IntVec3, bool> CheckCell = AccessTools.MethodDelegate<Func<ProjectileCE, IntVec3, bool>>(AccessTools.Method(typeof(ProjectileCE), "CheckCellForCollision"));
         internal static readonly Func<ProjectileCE, Ray> ProjectileRay = AccessTools.MethodDelegate<Func<ProjectileCE, Ray>>(
