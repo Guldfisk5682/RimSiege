@@ -29,6 +29,7 @@ namespace RimSiege.Combat.Projectiles
             if (!__state.Found || __result || __instance.Destroyed) return;
             __instance.Position = __state.Cell;
             __instance.landed = true;
+            CeProjectileOrigins.RecordSurface(__instance, __state.Cell, __state.Point, __state.ExplosionCell, __state.FromBelow);
 
             CeAccess.Impact(__instance, null);
             __result = true;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using CombatExtended;
 using HarmonyLib;
 using RimSiege.Combat.Geometry;
@@ -21,8 +22,45 @@ namespace RimSiege.Combat.Aiming
         [ThreadStatic] internal static ProjectileCE Source;
         [ThreadStatic] internal static ExplosionCE Picker;
 
-        public static IntVec3 ProjectileCell(Vector3 point, ProjectileCE projectile) =>
-            FloorCoordinates.ContactCell(point, projectile.Position, projectile.Map);
+        private sealed class SurfaceTargets
+        {
+            public SurfaceTargets() { }
+            internal HashSet<IntVec3> Cells = new HashSet<IntVec3>();
+        }
+        private static readonly ConditionalWeakTable<ExplosionCE, SurfaceTargets> Surfaces = new();
+        private static readonly Action<DamageWorker, Explosion, IntVec3> DamageTerrain =
+            AccessTools.MethodDelegate<Action<DamageWorker, Explosion, IntVec3>>(
+                AccessTools.Method(typeof(DamageWorker), "ExplosionDamageTerrain"));
+
+        public static Vector3 DetonationPosition(ProjectileCE projectile)
+        {
+            Vector3 point = CeAccess.ProjectilePosition(projectile);
+            var surface = CeProjectileOrigins.SurfaceOf(projectile);
+            if (surface?.SurfaceFromBelow == true)
+                // CE classifies above-roof blasts at WallCollisionHeight. Use
+                // its nearest below-roof height on the incoming side, rather
+                // than placing an underside detonation on the floor above.
+                point.y = CombatHeights.Base(surface.ExplosionCell, projectile.Map) +
+                    MathF.BitDecrement(CollisionVertical.WallCollisionHeight);
+            return point;
+        }
+
+        public static IntVec3 ProjectileCell(Vector3 point, ProjectileCE projectile)
+        {
+            var surface = CeProjectileOrigins.SurfaceOf(projectile);
+            if (surface != null)
+            {
+                Vector3 effect = DetonationPosition(projectile);
+                Vector3 shifted = effect;
+                Vector3 direction = CeAccess.ProjectileRay(projectile).direction;
+                // Match CE's existing west/south boundary-cell correction.
+                if (direction.x < 0f && Mathf.Approximately(shifted.x, (int)shifted.x)) shifted.x -= 0.5f;
+                if (direction.z < 0f && Mathf.Approximately(shifted.z, (int)shifted.z)) shifted.z -= 0.5f;
+                if (point == effect || point == shifted || point == surface.SurfacePoint) return surface.ExplosionCell;
+            }
+            return CeProjectileOrigins.TrySurface(projectile, point, out IntVec3 cell)
+                ? cell : FloorCoordinates.ContactCell(point, projectile.Position, projectile.Map);
+        }
 
         public static IntVec3 ComponentCell(Vector3 point, ThingComp component) =>
             component.parent is ProjectileCE projectile ? ProjectileCell(point, projectile) : point.ToIntVec3();
@@ -60,13 +98,56 @@ namespace RimSiege.Combat.Aiming
         public static bool PlanesClear(IntVec3 from, IntVec3 to, float sourceHeight, float targetHeight, Map map) =>
             ProjectZ.Combat.Explosions3D.PlanesClear(from, to, SourceHeight(sourceHeight), targetHeight, map);
 
-        internal static IEnumerable<CodeInstruction> MapCalls(IEnumerable<CodeInstruction> instructions, bool component)
+        internal static IEnumerable<IntVec3> SurfaceCells(ExplosionCE explosion, IEnumerable<IntVec3> cells)
+        {
+            var surface = CeProjectileOrigins.SurfaceOf(Source);
+            if (surface?.SurfaceFromBelow == true && surface.ExplosionCell == explosion.Position &&
+                surface.SurfaceCell != explosion.Position && ProjectZ.SlabDamage.SlabAt(surface.SurfaceCell, explosion.Map) != null)
+                Surfaces.GetOrCreateValue(explosion).Cells.Add(surface.SurfaceCell);
+            if (!Surfaces.TryGetValue(explosion, out SurfaceTargets targets) || targets.Cells.Count == 0) return cells;
+            var result = cells.ToList();
+            foreach (IntVec3 cell in targets.Cells)
+                if (!result.Contains(cell)) result.Add(cell);
+            return result;
+        }
+
+        internal static bool SurfaceTerrain(ExplosionCE explosion, IntVec3 cell)
+        {
+            if (!Surfaces.TryGetValue(explosion, out SurfaceTargets targets) || !targets.Cells.Remove(cell) ||
+                ProjectZ.SlabDamage.SlabAt(cell, explosion.Map) == null) return false;
+            // Affect the struck slab through its native terrain-damage hook,
+            // without treating occupants above an intact slab as exposed.
+            DamageTerrain(explosion.damType.Worker, explosion, cell);
+            return true;
+        }
+
+        internal static void MergeSurfaces(ExplosionCE first, ExplosionCE second, ExplosionCE merged)
+        {
+            foreach (ExplosionCE source in new[] { first, second })
+                if (Surfaces.TryGetValue(source, out SurfaceTargets targets))
+                    Surfaces.GetOrCreateValue(merged).Cells.UnionWith(targets.Cells);
+        }
+
+        internal static void ExposeSurfaces(ExplosionCE explosion)
+        {
+            SurfaceTargets targets = Surfaces.GetOrCreateValue(explosion);
+            Scribe_Collections.Look(ref targets.Cells, "rimSiegeStruckSlabs", LookMode.Value);
+            targets.Cells ??= new HashSet<IntVec3>();
+        }
+
+        internal static IEnumerable<CodeInstruction> MapCalls(IEnumerable<CodeInstruction> instructions, bool component, bool detonation = false)
         {
             MethodInfo toCell = AccessTools.Method(typeof(IntVec3Utility), nameof(IntVec3Utility.ToIntVec3), new[] { typeof(Vector3) });
             MethodInfo draw = AccessTools.PropertyGetter(typeof(Thing), nameof(Thing.DrawPos));
+            MethodInfo exact = AccessTools.PropertyGetter(typeof(ProjectileCE), "ExactPosition");
             foreach (CodeInstruction c in instructions)
             {
-                if (c.Calls(toCell))
+                if (detonation && c.Calls(exact))
+                {
+                    c.opcode = OpCodes.Call;
+                    c.operand = AccessTools.Method(typeof(ExplosionFireCompatibility), nameof(DetonationPosition));
+                }
+                else if (c.Calls(toCell))
                 {
                     yield return new CodeInstruction(OpCodes.Ldarg_0).MoveLabelsFrom(c).MoveBlocksFrom(c);
                     c.opcode = OpCodes.Call;
@@ -104,8 +185,9 @@ namespace RimSiege.Combat.Aiming
         // Restore the caller's origin even when the original method throws.
         private static void Finalizer(ProjectileCE __state) => ExplosionFireCompatibility.Source = __state;
 
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions) =>
-            ExplosionFireCompatibility.MapCalls(instructions, false);
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod) =>
+            ExplosionFireCompatibility.MapCalls(instructions, false,
+                __originalMethod.DeclaringType == typeof(ProjectileCE) && __originalMethod.Name == "Impact");
     }
 
     [HarmonyPatch]
@@ -155,8 +237,18 @@ namespace RimSiege.Combat.Aiming
             center.y = 0;
             ProjectileCE source = ExplosionFireCompatibility.Source;
             if (source == null || source.Map != map) return;
+            var surface = CeProjectileOrigins.SurfaceOf(source);
+            if (surface != null)
+            {
+                center = surface.ExplosionCell;
+                if (surface.SurfaceFromBelow)
+                {
+                    height = MathF.BitDecrement(CollisionVertical.WallCollisionHeight);
+                    return;
+                }
+            }
             IntVec3 ground = IsoFloor.GroundCellOf(center, map);
-            center = IsoFloor.CellOnFloor(ground, IsoFloor.FloorOf(source.Position, map), map);
+            if (surface == null) center = IsoFloor.CellOnFloor(ground, IsoFloor.FloorOf(source.Position, map), map);
             // ExplosionCE's own roof/merge checks require a local height. Its
             // absolute blast height is recoverable from this band plus height.
             // An omitted height is CE's surface explosion, including bunker
@@ -199,12 +291,35 @@ namespace RimSiege.Combat.Aiming
             {
                 __result = IsoFloor.ExplosionCells(__result, __instance.Position, __instance.Map,
                     __instance.radius, __instance.affectedAngle);
+                __result = ExplosionFireCompatibility.SurfaceCells(__instance, __result);
             }
             finally
             {
                 ExplosionFireCompatibility.Picker = previous;
             }
         }
+    }
+
+    [HarmonyPatch(typeof(Explosion), "AffectCell")]
+    internal static class SurfaceBlastTerrainPatch
+    {
+        private static bool Prefix(Explosion __instance, IntVec3 c) => __instance is not ExplosionCE ce ||
+            !ExplosionFireCompatibility.SurfaceTerrain(ce, c);
+    }
+
+    [HarmonyPatch(typeof(ExplosionCE), nameof(ExplosionCE.MergeWith))]
+    internal static class SurfaceBlastMergePatch
+    {
+        private static void Postfix(ExplosionCE __instance, ExplosionCE other, ExplosionCE merged, bool __result)
+        {
+            if (__result) ExplosionFireCompatibility.MergeSurfaces(__instance, other, merged);
+        }
+    }
+
+    [HarmonyPatch(typeof(ExplosionCE), nameof(ExplosionCE.ExposeData))]
+    internal static class SurfaceBlastSavePatch
+    {
+        private static void Postfix(ExplosionCE __instance) => ExplosionFireCompatibility.ExposeSurfaces(__instance);
     }
 
     [HarmonyPatch]

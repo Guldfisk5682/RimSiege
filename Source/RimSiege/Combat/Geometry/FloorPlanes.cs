@@ -9,6 +9,8 @@ namespace RimSiege.Combat.Geometry
         public bool Found;
         public Vector3 Point;
         public IntVec3 Cell;
+        public IntVec3 ExplosionCell;
+        public bool FromBelow;
     }
 
     internal enum PlaneQuery { Sight, Contact }
@@ -43,7 +45,8 @@ namespace RimSiege.Combat.Geometry
                 if (!ground.IsValid) continue;
                 bool slab = IsoFloor.HasLevel(map, k) && IsoFloor.FloorAt(ground, k, map);
                 IntVec3 hitCell = IsoFloor.CellOnFloor(ground, slab ? k : k - 1, map);
-                return new PlaneContact { Found = true, Point = point, Cell = hitCell };
+                return new PlaneContact { Found = true, Point = point, Cell = hitCell,
+                    ExplosionCell = ascending ? IsoFloor.CellOnFloor(ground, k - 1, map) : hitCell, FromBelow = ascending };
             }
             return contact;
         }

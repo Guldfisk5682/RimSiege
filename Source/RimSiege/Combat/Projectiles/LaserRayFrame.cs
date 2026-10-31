@@ -55,7 +55,8 @@ namespace RimSiege.Combat.Projectiles
                 if (distance > 0f && distance <= Range && IsoFloor.GroundRect(Map).Contains(ground) &&
                     (!Surface.Found || distance < (Surface.Point - ray.origin).magnitude))
                     Surface = new PlaneContact { Found = true, Point = point,
-                        Cell = IsoFloor.CellOnFloor(ground, IsoFloor.MinLevel(Map), Map) };
+                        Cell = IsoFloor.CellOnFloor(ground, IsoFloor.MinLevel(Map), Map),
+                        ExplosionCell = IsoFloor.CellOnFloor(ground, IsoFloor.MinLevel(Map), Map) };
             }
             if (Surface.Found) Limit = (Surface.Point - ray.origin).magnitude;
         }
@@ -174,6 +175,7 @@ namespace RimSiege.Combat.Projectiles
                 {
                     beam.Position = shot.Surface.Cell;
                     beam.landed = true;
+                    CeProjectileOrigins.RecordSurface(beam, shot.Surface.Cell, end, shot.Surface.ExplosionCell, shot.Surface.FromBelow);
                 }
             }
             CeAccess.SpawnLaser(beam, source, end);
