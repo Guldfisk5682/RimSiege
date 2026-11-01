@@ -16,7 +16,7 @@ namespace RimSiege.Raids
     {
         private static bool Prefix(Pawn pawn, bool exit, ref Job __result)
         {
-            if (exit || IsoSiegePlanner.Active != null || !SiegeRaidMap.Enabled || pawn?.Map == null ||
+            if (exit || IsoSiegePlanner.Active != null || LadderPerch.Get(pawn)?.atTop == true || !SiegeRaidMap.Enabled || pawn?.Map == null ||
                 !pawn.Map.GetComponent<SiegeRaidMap>().Applies(pawn)) return true;
             // Only the kit-backed planner opens new routes for these ordinary raids.
             // The original sapper jobs remain available as the final fallback.
@@ -42,6 +42,8 @@ namespace RimSiege.Raids
             if (raids.Applies(pawn) && kit == null) return null;
             Building_SiegeLadder building = LadderSite.Spawn(foot, top, faction, map, lift, allowBlocker);
             if (building != null && kit != null) LadderInventory.Consume(pawn, kit);
+            if (building?.topBlocker == true && raids.Applies(pawn) && LadderTopClearance.Allows(top.GetEdifice(map)))
+                pawn.jobs.jobQueue.EnqueueFirst(JobMaker.MakeJob(PZVJobDefOf.PZ_LadderPerch, building, top));
             return building;
         }
 
