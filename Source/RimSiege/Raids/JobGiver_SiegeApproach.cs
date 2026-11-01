@@ -1,4 +1,5 @@
 using RimWorld;
+using ProjectZ;
 using Verse;
 using Verse.AI;
 
@@ -6,7 +7,7 @@ namespace RimSiege.Raids
 {
     public sealed class ThinkNode_ConditionalLadderDuty : ThinkNode_Conditional
     {
-        protected override bool Satisfied(Pawn pawn) => LadderInventory.Get(pawn) != null ||
+        protected override bool Satisfied(Pawn pawn) => LadderInventory.Get(pawn) != null || LadderPerch.Get(pawn) != null ||
             pawn.Map?.GetComponent<SiegeRaidMap>().RecoveryFor(pawn) != null;
     }
 
@@ -22,13 +23,20 @@ namespace RimSiege.Raids
                 LadderInventory.Drop(pawn);
                 return null;
             }
-            // Kit carriers place ASAP and ignore combat; this JobGiver only
-            // runs under ThinkNode_ConditionalLadderDuty (has kit or recovery).
+            // Carriers and perched clearers take priority over ordinary combat;
+            // the later assault node also lets other troops reuse built routes.
+            LadderPerch.Rec perch = LadderPerch.Get(pawn);
+            if (perch?.atTop == true) return RaidVertical.ClearJob(pawn, perch);
             IntVec3 existingRoute = party.Planner.Destination(pawn, false);
             if (existingRoute.IsValid)
                 return JobMaker.MakeJob(JobDefOf.Goto, existingRoute, 500, checkOverrideOnExpiry: true);
 
             if (LadderInventory.Get(pawn) != null) return party.Plan(pawn);
+            if (party.Planner.HasClearance)
+            {
+                Job clearing = party.Plan(pawn, placing: false);
+                if (clearing != null) return clearing;
+            }
             Job recovery = raids.Recovery(pawn, party);
             if (recovery != null) return recovery;
 

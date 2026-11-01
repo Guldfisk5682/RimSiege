@@ -14,14 +14,16 @@ using Verse.AI.Group;
 
 namespace RimSiege.Integration
 {
-    // The existing Iso planner, with a separate no-demolition connectivity graph.
+    // The existing Iso planner, with a separate walk-only connectivity graph.
     // Its site generation, A*, costs, shared plans and job construction stay native.
-    internal sealed class IsoSiegePlanner
+    internal sealed partial class IsoSiegePlanner
     {
         [ThreadStatic] internal static IsoSiegePlanner Active;
         internal readonly Map Map;
         internal readonly RouteGraph Graph;
-        internal readonly ClimbPlans Plans;
+        private readonly ClimbPlans placingPlans, existingPlans;
+        private bool allowNewLadders = true;
+        internal ClimbPlans Plans => allowNewLadders ? placingPlans : existingPlans;
         internal Pawn Traveller;
         private readonly CacheImage cache = new CacheImage();
         private readonly Func<int> epoch;
@@ -32,12 +34,14 @@ namespace RimSiege.Integration
         private delegate Thing TargetPicker(Pawn pawn, Lord lord, RouteGraph graph, int startComp, ClimbPlans plans, out bool anyReachable);
         private static readonly TargetPicker PickTarget = AccessTools.MethodDelegate<TargetPicker>(AccessTools.Method(typeof(RaidClimb), "PickTarget"));
 
-        internal IsoSiegePlanner(Map map, Func<int> epoch)
+        internal IsoSiegePlanner(Map map, Func<int> epoch, Func<Thing, bool> canClearTop)
         {
             Map = map;
             this.epoch = epoch;
             Graph = new RouteGraph(map);
-            Plans = new ClimbPlans(map);
+            placingPlans = new ClimbPlans(map);
+            existingPlans = new ClimbPlans(map);
+            this.canClearTop = canClearTop;
         }
 
         internal int Version => RouteGraph.For(Map).anyVersion + epoch();
@@ -86,7 +90,7 @@ namespace RimSiege.Integration
             finally { selectingTarget = checkingRoute = false; Active = previous; }
         }
 
-        internal Job JobFor(Pawn pawn)
+        internal Job JobFor(Pawn pawn, bool placing = true)
         {
             Synchronize(pawn);
             IsoSiegePlanner previous = Active;
@@ -94,7 +98,11 @@ namespace RimSiege.Integration
             native.Capture();
             cache.Apply();
             bool vertical = ClimbPlanner.NoVertical;
-            ClimbPlanner.NoVertical = true; // Ordinary ladder troops do not gain sapper/mining abilities.
+            bool previousPlacing = allowNewLadders;
+            allowNewLadders = placing;
+            // Reuse native blocked-top ladders. Clearance bindings restrict
+            // their targets and leave ceiling excavation disabled.
+            ClimbPlanner.NoVertical = false;
             Active = this;
             try { return RaidClimb.TryGive(pawn, false, false); }
             finally
@@ -102,6 +110,7 @@ namespace RimSiege.Integration
                 cache.Capture();
                 native.Apply();
                 ClimbPlanner.NoVertical = vertical;
+                allowNewLadders = previousPlacing;
                 Active = previous;
             }
         }
