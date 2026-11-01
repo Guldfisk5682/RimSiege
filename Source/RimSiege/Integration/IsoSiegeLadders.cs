@@ -26,7 +26,7 @@ namespace RimSiege.Integration
         {
             Thing thing = target.Thing;
             if (mode != PathEndMode.Touch || thing?.Map != map || !Ends(thing, out _, out IntVec3 top) ||
-                IsoFloor.FloorOf(source, map) != IsoFloor.FloorOf(top, map) || !top.Walkable(map) ||
+                IsoFloor.FloorOf(source, map) != IsoFloor.FloorOf(top, map) || !top.WalkableByNormal(map) ||
                 !StairTouch.TouchAllowedFrom(source, thing)) return;
             // This is an interaction destination, not another map object or link.
             target = new LocalTargetInfo(top);
