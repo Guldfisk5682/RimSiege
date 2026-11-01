@@ -1,17 +1,31 @@
-# 3Dsiege
+# RimSiege
 
-Combat Extended compatibility for IsoRim Waylith and IsoRimZ on RimWorld 1.7 Unstable.
+RimSiege is a RimWorld mod built on [IsoRimZ](https://github.com/peren717/IsoRim-ProjectZ). It brings Combat Extended combat across floors to 3D RimWorld and adds new raid mechanics built around vertical warfare.
 
-The compatibility layer adapts floor coordinates, aiming, target acquisition, projectile collisions and projectile drawing. Version 0.2 adds cross-floor adaptation for explosive and incendiary effects, fragments, indirect fire, the Diabolus main cannon and mechanoid attached turrets. Combat Extended retains its ballistics, cover checks and damage algorithms; native weapons reuse IsoRimZ's combat adapters.
+Currently targets **RimWorld 1.7 Unstable**. RimSiege is in early development; bug reports, issues, and pull requests are welcome.
 
-Load after Harmony, Combat Extended, IsoRim Waylith and IsoRimZ.
+## Requirements
 
-Build with the .NET 10 SDK against the installed game and mods:
+- [Harmony](https://github.com/pardeike/HarmonyRimWorld)
+- [Combat Extended](https://github.com/CombatExtended-Continued/CombatExtended)
+- [Combat Extended Armory](https://github.com/CombatExtended-Continued/CombatExtendedArmory)
+- [IsoRim Waylith](https://github.com/peren717/IsoRim-1.7), required by IsoRimZ
+- [IsoRimZ](https://github.com/peren717/IsoRim-ProjectZ)
 
-```sh
-dotnet build Source/RimSiege/RimSiege.csproj -c Release -p:RimWorldDir="/path/to/RimWorld"
-```
+Load RimSiege after these mods.
 
-The build produces `1.7/Assemblies/RimSiege.dll`. Reference paths for Harmony, Combat Extended, IsoRim and IsoRimZ can be overridden through the project's MSBuild properties.
+## Cross-floor Combat Extended
 
-`Source/RimSiege/Integration` holds external API bindings. `Combat/Geometry`, `Combat/Aiming` and `Combat/Projectiles` hold the floor geometry, shot checks and projectile adapters. Target acquisition adapters remain in `Combat/TargetAcquisitionPatches.cs`.
+Experience CE combat in 3D! RimSiege supports combat between floors while preserving CE's combat mechanics. Build defensive positions on upper floors and mountaintops, set up machine guns and mortars, and fight back against approaching raiders.
+
+## RimSiege
+
+Want more from vanilla sieges? RimSiege adds artillery support to human and mechanoid raids. Some raiding forces establish their own fortified artillery camps outside your colony to support their main assault. As raid strength grows, attackers can bring heavier firepower and larger-caliber guns. Vanilla siege raids also gain stronger artillery support.
+
+RimSiege also reworks IsoRimZ's siege ladder mechanics. Designated raiders carry ladder kits and deploy them to scale your defenses. Order your colonists to destroy those ladders before the attackers reach the top of your walls.
+
+These raid enhancements can be disabled in the mod settings, so you can also use RimSiege as a CE compatibility patch for combat across floors.
+
+## License
+
+[MIT License](LICENSE).

@@ -11,14 +11,15 @@ namespace RimSiege.Combat.Geometry
     {
         private static void Postfix(Thing thing, ref Bounds __result)
         {
-            if (thing == null || !IsoFloor.HasFloors(thing.Map)) return;
+            Map map = CeArtillerySight.MapFor(thing);
+            if (thing == null || !IsoFloor.HasFloors(map)) return;
             if (SiegeLadderGeometry.TryGet(thing, out SiegeLadderShape ladder))
             {
                 __result = ladder.Bounds;
                 return;
             }
-            Vector3 center = FloorCoordinates.Ground(__result.center, thing.Position, thing.Map);
-            center.y += CombatHeights.Base(thing.Position, thing.Map);
+            Vector3 center = FloorCoordinates.Ground(__result.center, thing.Position, map);
+            center.y += CombatHeights.Base(thing.Position, map);
             __result.center = center;
         }
     }

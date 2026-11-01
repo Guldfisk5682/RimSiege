@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LanguageData>
-  <RS_EnhancedAssault>Enhanced siege assaults</RS_EnhancedAssault>
-  <RS_EnhancedAssaultDescription>New ordinary raids carry limited ladder kits, recover dropped kits and prefer ladders to breaking walls when no existing route is open. Existing routes and special raid strategies retain their usual behavior.</RS_EnhancedAssaultDescription>
-  <RS_LadderCarrier>[Ladder carrier]</RS_LadderCarrier>
-</LanguageData>

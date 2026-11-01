@@ -1,8 +1,11 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using RimSiege.Integration;
+using RimSiege.Raids.Artillery;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -15,7 +18,7 @@ namespace RimSiege.Raids
     [HarmonyPatch(typeof(IncidentWorker_Raid), "TryExecuteWorker")]
     internal static class RaidSpawnPatch
     {
-        internal sealed class Spawn { internal List<Pawn> Pawns; }
+        internal sealed class Spawn { internal List<Pawn> Pawns; internal ArtilleryRaid Artillery; }
         [ThreadStatic] internal static Spawn Current;
 
         private static void Prefix(out Spawn __state)
@@ -26,11 +29,15 @@ namespace RimSiege.Raids
 
         private static void Postfix(IncidentParms parms, bool __result)
         {
-            if (__result && Current?.Pawns != null && parms.target is Map map &&
-                (parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttack ||
-                 parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart ||
-                 Current.Pawns.Exists(p => SiegeRoles.Ordinary(p.GetLord()))))
-                map.GetComponent<SiegeRaidMap>().Register(Current.Pawns);
+            if (!__result || Current?.Pawns == null || parms.target is not Map map) return;
+            if (Current.Artillery != null || parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttack ||
+                parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart ||
+                parms.raidStrategy.Worker is RaidStrategyWorker_StageThenAttack ||
+                Current.Pawns.Exists(p => SiegeRoles.Ordinary(p.GetLord())))
+            {
+                SiegeParty party = map.GetComponent<SiegeRaidMap>().Register(Current.Pawns, parms.faction);
+                if (Current.Artillery != null && party != null) Current.Artillery.Id = party.Id;
+            }
         }
 
         private static void Finalizer(Spawn __state) => Current = __state;
@@ -39,9 +46,42 @@ namespace RimSiege.Raids
     [HarmonyPatch(typeof(IncidentWorker_Raid), nameof(IncidentWorker_Raid.TryGenerateRaidInfo))]
     internal static class RaidRosterPatch
     {
-        private static void Postfix(List<Pawn> pawns, bool __result)
+        // Vanilla arrives the roster inside TryGenerateRaidInfo before Postfix.
+        // Wrap Arrive so Constructoids are on the list before drop-pods / edge walk-in.
+        private static void ArriveWithConstructoids(PawnsArrivalModeWorker worker, List<Pawn> pawns,
+            IncidentParms parms)
         {
-            if (__result && RaidSpawnPatch.Current != null) RaidSpawnPatch.Current.Pawns = pawns;
+            MechBattery.InjectConstructoids(RaidSpawnPatch.Current?.Artillery, pawns);
+            worker.Arrive(pawns, parms);
+        }
+
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo arrive = AccessTools.Method(typeof(PawnsArrivalModeWorker), nameof(PawnsArrivalModeWorker.Arrive));
+            MethodInfo wrap = AccessTools.Method(typeof(RaidRosterPatch), nameof(ArriveWithConstructoids));
+            foreach (CodeInstruction code in instructions)
+            {
+                if (code.Calls(arrive))
+                {
+                    code.opcode = OpCodes.Call;
+                    code.operand = wrap;
+                }
+                yield return code;
+            }
+        }
+
+        private static void Postfix(IncidentParms parms, List<Pawn> pawns, bool __result, bool debugTest)
+        {
+            if (!__result || RaidSpawnPatch.Current == null) return;
+            // SpawnThreats path can skip Arrive; inject then land any still-unspawned.
+            int before = pawns.Count;
+            if (!debugTest) MechBattery.InjectConstructoids(RaidSpawnPatch.Current.Artillery, pawns);
+            if (pawns.Count > before && parms?.raidArrivalMode != null)
+            {
+                var late = pawns.Skip(before).Where(p => p != null && !p.Spawned).ToList();
+                if (late.Count > 0) parms.raidArrivalMode.Worker.Arrive(late, parms);
+            }
+            RaidSpawnPatch.Current.Pawns = pawns;
         }
     }
 
@@ -106,20 +146,39 @@ namespace RimSiege.Raids
         }
     }
 
-    [HarmonyPatch]
+    [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
     internal static class AssignedGunnerPatch
     {
-        private static IEnumerable<MethodBase> TargetMethods() => CeAccess.Methods(typeof(JobGiver_ManTurrets), "TryGiveJob");
-
-        private static void Postfix(Pawn pawn, Job __result)
+        private static void Postfix(Pawn ___pawn, Job newJob)
         {
-            if (__result == null || !SiegeRaidMap.Enabled) return;
+            Pawn pawn = ___pawn;
+            if (!SiegeRaidMap.Enabled || pawn.Map == null || pawn.CurJob != newJob || pawn.CurJobDef != JobDefOf.ManTurret) return;
+            ArtilleryMap artillery = pawn.Map.GetComponent<ArtilleryMap>();
+            ArtilleryRaid raid = artillery.ForPawn(pawn);
+            if (raid != null && pawn.GetLord() == raid.CampLord && pawn.CurJob.targetA.Thing is Building gun && artillery.ForGun(gun) == raid)
+            {
+                foreach (ArtilleryPlacement slot in raid.Camp.Guns)
+                    if (slot.Operator == pawn) slot.Operator = null;
+                foreach (ArtilleryPlacement slot in raid.Camp.Guns)
+                    if (slot.Building == gun) { slot.Operator = pawn; break; }
+            }
             SiegeParty party = pawn.Map.GetComponent<SiegeRaidMap>().Party(pawn);
             if (party != null)
             {
-                if (!party.Operators.Contains(pawn)) party.Operators.Add(pawn);
+                if (raid == null && !party.Operators.Contains(pawn))
+                    party.Operators.Add(pawn);
                 LadderInventory.Drop(pawn);
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_JobTracker), "CleanupCurrentJob")]
+    internal static class ReleasedGunnerPatch
+    {
+        private static void Prefix(Pawn ___pawn)
+        {
+            if (___pawn.Map != null && ___pawn.CurJobDef == JobDefOf.ManTurret)
+                ___pawn.Map.GetComponent<SiegeRaidMap>().Party(___pawn)?.Operators.Remove(___pawn);
         }
     }
 }

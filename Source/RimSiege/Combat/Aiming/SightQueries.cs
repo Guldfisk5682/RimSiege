@@ -11,7 +11,7 @@ namespace RimSiege.Combat.Aiming
     internal static class SightQueries
     {
         public static float CoverDistance(IntVec3 from, IntVec3 to, Verb_LaunchProjectileCE verb) =>
-            FloorCoordinates.HorizontalDistance(from, to, verb.Caster.Map);
+            FloorCoordinates.HorizontalDistance(from, to, CeArtillerySight.MapFor(verb.Caster));
 
         // CE compares cover size to a muzzle height measured from floor zero.
         // Translate the size's height into the same frame as the lifted muzzle;
@@ -19,8 +19,9 @@ namespace RimSiege.Combat.Aiming
         public static Vector3 CoverSize(ref Bounds bounds, Verb_LaunchProjectileCE verb)
         {
             Vector3 size = bounds.size;
-            if (IsoFloor.HasFloors(verb.Caster.Map))
-                size.y += CombatHeights.Base(verb.Caster.Position, verb.Caster.Map);
+            Map map = CeArtillerySight.MapFor(verb.Caster);
+            if (IsoFloor.HasFloors(map))
+                size.y += CombatHeights.Base(verb.Caster.Position, map);
             return size;
         }
 
@@ -35,10 +36,11 @@ namespace RimSiege.Combat.Aiming
             }
             // Thing targets already went through CE's native target-height/lean
             // construction and our frame adapters. Cell targets still need lifting.
-            if (targetThing == null && IsoFloor.HasFloors(verb.Caster.Map))
+            Map map = CeArtillerySight.MapFor(verb.Caster);
+            if (targetThing == null && IsoFloor.HasFloors(map))
             {
-                endpoint = FloorCoordinates.Ground(endpoint, targetLoc, verb.Caster.Map);
-                endpoint.y += CombatHeights.Base(targetLoc, verb.Caster.Map);
+                endpoint = FloorCoordinates.Ground(endpoint, targetLoc, map);
+                endpoint.y += CombatHeights.Base(targetLoc, map);
                 direction = endpoint - origin;
             }
             sight = new SightRay(origin, endpoint, verb, targetLoc);
@@ -61,8 +63,7 @@ namespace RimSiege.Combat.Aiming
             // HighestCoverAt already includes k*StoreyCe through the existing
             // ThingBoundsFramePatch. Adding that base here would double it.
             float coverTop = sight.Map.GetLightingTracker().HighestCoverAt(cell);
-            if (coverTop < sight.Minimum(cell)) return true;
-            return fineCheck(cell); // All native CE cover/body/ally checks remain.
+            return coverTop < sight.Minimum(cell) || fineCheck(cell);
         }
 
         public static IEnumerable<IntVec3> Cells(Vector3 source, Vector3 targetCell, SightRay sight)
@@ -98,7 +99,7 @@ namespace RimSiege.Combat.Aiming
 
         public static IEnumerable<IntVec3> SightCells(Vector3 from, Vector3 to, Verb_LaunchProjectileCE verb, Thing targetThing)
         {
-            Map map = verb.Caster.Map;
+            Map map = CeArtillerySight.MapFor(verb.Caster);
             if (!IsoFloor.HasFloors(map))
                 return CeAccess.Points(from, to);
             IntVec3 mapTarget = to.ToIntVec3();

@@ -91,8 +91,9 @@ namespace RimSiege.Combat.Aiming
         private static MethodBase TargetMethod() => AccessTools.PropertyGetter(typeof(Verb_LaunchProjectileCE), "ShotSource");
         private static void Postfix(Verb_LaunchProjectileCE __instance, ref Vector3 __result)
         {
-            if (IsoFloor.HasFloors(__instance.Caster.Map))
-                __result = FloorCoordinates.Ground(__result, __instance.Caster.Position, __instance.Caster.Map);
+            Map map = CeArtillerySight.MapFor(__instance.Caster);
+            if (IsoFloor.HasFloors(map))
+                __result = FloorCoordinates.Ground(__result, __instance.Caster.Position, map);
         }
     }
 
@@ -101,7 +102,7 @@ namespace RimSiege.Combat.Aiming
     {
         private static void Prefix(Verb_LaunchProjectileCE __instance, ref Vector3 shotSource)
         {
-            Map map = __instance.Caster.Map;
+            Map map = CeArtillerySight.MapFor(__instance.Caster);
             if (IsoFloor.HasFloors(map))
                 shotSource = FloorCoordinates.Ground(shotSource, map);
             // Plane rejection now runs after CE adjusts muzzle height and lean,

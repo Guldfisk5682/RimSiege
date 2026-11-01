@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <RimSiege.Raids.Artillery.ArtilleryProfileDef>
+    <defName>RS_ArtilleryOrdinary</defName>
+    <kind>Ordinary</kind>
+    <minPoints>1000</minPoints>
+    <personnelFactor>0.85</personnelFactor>
+    <equipmentFraction>0.2</equipmentFraction>
+    <budgetShare>0.15~0.20</budgetShare>
+    <totalPieces><points><li>(0,15)</li></points></totalPieces>
+    <guns>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_TwelvePounder</turret>
+        <cost>120</cost><ammo>Ammo_CannonBall_Bursting</ammo>
+      </li>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_PortableMortar</turret>
+        <cost>150</cost>
+      </li>
+    </guns>
+  </RimSiege.Raids.Artillery.ArtilleryProfileDef>
+  <RimSiege.Raids.Artillery.ArtilleryProfileDef>
+    <defName>RS_ArtilleryBreaching</defName>
+    <kind>Breaching</kind>
+    <minPoints>1000</minPoints>
+    <equipmentFraction>0.3</equipmentFraction>
+    <budgetShare>0.15~0.20</budgetShare>
+    <totalPieces><points><li>(0,15)</li></points></totalPieces>
+    <guns>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_TwelvePounder</turret>
+        <cost>120</cost><defaultAmmo>true</defaultAmmo>
+      </li>
+      <li MayRequire="CETeam.CombatExtendedArmory">
+        <turret>CE_Turret_PortableMortar</turret>
+        <cost>150</cost>
+      </li>
+      <li>
+        <turret>Turret_Flak</turret><cost>280</cost><weight>1.5</weight>
+      </li>
+    </guns>
+  </RimSiege.Raids.Artillery.ArtilleryProfileDef>
+  <RimSiege.Raids.Artillery.ArtilleryProfileDef>
+    <defName>RS_ArtillerySiege</defName>
+    <kind>Siege</kind>
+    <minPoints>1000</minPoints>
+    <equipmentFraction>0.3</equipmentFraction>
+    <budgetShare>0.30~0.40</budgetShare>
+    <totalPieces><points><li>(0,15)</li></points></totalPieces>
+    <guns>
+      <li>
+        <turret>Turret_Mortar</turret><cost>180</cost>
+      </li>
+      <li MayRequire="CETeam.CombatExtendedGuns">
+        <turret>CE_Artillery_Howitzer</turret><cost>360</cost><weight>1.5</weight>
+      </li>
+    </guns>
+  </RimSiege.Raids.Artillery.ArtilleryProfileDef>
+  <RimSiege.Raids.Artillery.ArtilleryProfileDef MayRequire="Ludeon.RimWorld.Biotech">
+    <defName>RS_ArtilleryMechanoid</defName>
+    <kind>Mechanoid</kind>
+    <minPoints>2000</minPoints>
+    <constructionSpeedOffset>2</constructionSpeedOffset>
+    <constructionSpeedScale>2</constructionSpeedScale>
+    <constructionSpeedCap>20</constructionSpeedCap>
+    <personnelCurve>
+      <points>
+        <li>(0,0.80)</li>
+        <li>(5000,0.65)</li>
+      </points>
+    </personnelCurve>
+    <budgetShare>0.10~0.20</budgetShare>
+    <totalPieces><points><li>(0,15)</li></points></totalPieces>
+    <guns>
+      <li>
+        <turret>Turret_AutoMiniTurret</turret>
+        <role>CampDefense</role>
+        <defaultAmmo>true</defaultAmmo>
+        <cost>100</cost><weight>1</weight>
+      </li>
+      <li>
+        <turret>Turret_AutoMortar</turret>
+        <defaultAmmo>true</defaultAmmo>
+        <cost>180</cost><weight>1</weight>
+      </li>
+      <li>
+        <turret>Turret_AutoInferno</turret>
+        <defaultAmmo>true</defaultAmmo>
+        <cost>280</cost><weight>1</weight>
+      </li>
+      <li>
+        <turret>Turret_AutoChargeBlaster</turret>
+        <defaultAmmo>true</defaultAmmo>
+        <cost>280</cost><weight>1</weight>
+      </li>
+    </guns>
+  </RimSiege.Raids.Artillery.ArtilleryProfileDef>
+</Defs>
