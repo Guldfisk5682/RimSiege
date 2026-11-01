@@ -43,7 +43,7 @@ namespace RimSiege.Raids.Artillery
             SupportRoute route = SupportRoute.Restore(map, raid);
             if (route == null) return false;
             if (!((LordJob_Artillery)lord.LordJob).PrepareCrew()) return false;
-            return CampPlanner.Revalidate(map, raid, raid.Camp, route.PlanningTargets());
+            return CampPlanner.Revalidate(map, raid, raid.Camp, route.PlanningTargets(raid.Camp.BreachAnchor));
         }
 
         internal static List<Blueprint_Build> Blueprints(ArtilleryRaid raid, Lord lord)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using RimSiege.Integration;
+using RimWorld;
 using Verse;
 
 namespace RimSiege.Raids.Artillery
@@ -10,24 +11,27 @@ namespace RimSiege.Raids.Artillery
     internal sealed class CampSiting
     {
         internal const float RangeMargin = 10f;
+        // Match the existing three-cell centre grouping; this is a deployment
+        // band around the reference, not a ten-cell-wide maximum-range fallback.
+        internal const float CenterTolerance = 3f;
         private readonly Map map;
         private readonly bool floors;
-        private readonly List<IntVec3> retreatCells;
         internal readonly List<LocalTargetInfo> Targets;
+        internal readonly List<Thing> BreachTargets;
         internal readonly ArtilleryTargets Candidates;
         internal readonly IntVec3 BreachAnchor;
 
-        internal CampSiting(ArtilleryTargets candidates, SupportRoute route)
+        internal CampSiting(ArtilleryTargets candidates, SupportRoute route, IntVec3? breachAnchor = null)
         {
             Candidates = candidates;
             Map map = candidates.Map;
             this.map = map;
             floors = IsoFloor.HasFloors(map);
-            var walls = candidates.Walls.Select(t => (LocalTargetInfo)t).ToList();
             List<LocalTargetInfo> colony = ColonyTargets(map);
             Targets = candidates.All.ToList();
-            retreatCells = walls.Concat(colony).Select(t => t.Cell).Distinct().ToList();
-            BreachAnchor = FindAnchor(route, candidates, colony);
+            BreachAnchor = breachAnchor.HasValue && breachAnchor.Value.IsValid
+                ? breachAnchor.Value : FindAnchor(route, candidates, colony);
+            BreachTargets = candidates.FrontAt(BreachAnchor);
         }
 
         // These are exactly the colonist and player combat-building collections
@@ -87,9 +91,23 @@ namespace RimSiege.Raids.Artillery
 
         internal bool Allows(IntVec3 center, float retreat)
         {
-            foreach (IntVec3 target in retreatCells)
-                if (Distance(center, target) < retreat) return false;
-            return true;
+            return Math.Abs(Distance(center, BreachAnchor) - retreat) <= CenterTolerance;
+        }
+
+        internal IEnumerable<LocalTargetInfo> TargetsFor(bool direct) => direct
+            ? BreachTargets.Select(t => (LocalTargetInfo)t) : Targets;
+
+        internal ArtilleryTargetResult DeploymentTarget(Faction faction, EmplacementSpec placement, float? range)
+        {
+            bool direct = CeArtillerySight.IsDirectFire(placement.Def, placement.Ammo);
+            // Direct-piece ranges are resolved for every template before site
+            // search and again at arrival. A nearer incidental wall may not
+            // substitute for range to the selected breach reference itself.
+            if (direct && Distance(placement.Cell, BreachAnchor) > range.Value - RangeMargin)
+                return new ArtilleryTargetResult(LocalTargetInfo.Invalid,
+                    ArtilleryTargetReason.InsufficientDeploymentReserve, false, false);
+            return Candidates.FindGeometry(faction, placement, range,
+                direct ? BreachTargets : null, direct ? RangeMargin : 0f);
         }
 
     }

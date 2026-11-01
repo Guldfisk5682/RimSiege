@@ -116,7 +116,8 @@ namespace RimSiege.Raids.Artillery
                     yield return target;
         }
 
-        internal CampSiting PlanningTargets() => new CampSiting(new ArtilleryTargets(Map, Goal, this), this);
+        internal CampSiting PlanningTargets(IntVec3? breachAnchor = null) =>
+            new CampSiting(new ArtilleryTargets(Map, Goal, this), this, breachAnchor);
     }
 
 }

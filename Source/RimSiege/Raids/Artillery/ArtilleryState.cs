@@ -74,6 +74,8 @@ namespace RimSiege.Raids.Artillery
     internal sealed class CampPlan : IExposable
     {
         internal IntVec3 Center = IntVec3.Invalid, Goal = IntVec3.Invalid;
+        // The selected tactical objective, not a retained wall/query snapshot.
+        internal IntVec3 BreachAnchor = IntVec3.Invalid;
         internal List<ArtilleryPlacement> Guns = new List<ArtilleryPlacement>();
         internal List<ArtilleryPlacement> Cover = new List<ArtilleryPlacement>();
 
@@ -83,6 +85,7 @@ namespace RimSiege.Raids.Artillery
         {
             Scribe_Values.Look(ref Center, "center");
             Scribe_Values.Look(ref Goal, "goal");
+            Scribe_Values.Look(ref BreachAnchor, "breachAnchor", IntVec3.Invalid);
             Scribe_Collections.Look(ref Guns, "guns", LookMode.Deep);
             Scribe_Collections.Look(ref Cover, "cover", LookMode.Deep);
         }

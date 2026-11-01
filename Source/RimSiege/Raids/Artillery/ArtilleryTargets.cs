@@ -14,7 +14,7 @@ namespace RimSiege.Raids.Artillery
     internal enum ArtilleryTargetReason
     {
         NoCandidates, InvalidTarget, UnavailableWeapon, OutsideRange, BelowMinimumRange,
-        OutsideArc, DisabledThreat, CeRejected, GeometryPassed, Accepted
+        OutsideArc, DisabledThreat, CeRejected, GeometryPassed, Accepted, InsufficientDeploymentReserve
     }
 
     // This reports shooting only. Operator path validation belongs to CampPlanner.
@@ -71,13 +71,26 @@ namespace RimSiege.Raids.Artillery
 
         internal IEnumerable<LocalTargetInfo> All => Walls.Concat(Fallback).Select(t => (LocalTargetInfo)t);
 
+        // A battery-wide breach front, bounded by its work-area radius. Group
+        // floors in the same ground column; the native filter still checks the
+        // actual target floor. An unrelated closer wall cannot justify this camp.
+        internal List<Thing> FrontAt(IntVec3 anchor)
+        {
+            bool Near(Thing target) => target.OccupiedRect().ClosestDistSquaredTo(
+                floors ? IsoFloor.OnFloorOf(anchor, target.Position, Map) : anchor)
+                <= CampPlanner.GunAreaRadius * CampPlanner.GunAreaRadius;
+            var walls = Walls.Where(Near).ToList();
+            return walls.Count != 0 ? walls : Fallback.Where(Near).ToList();
+        }
+
         internal bool Valid(Thing target) => target != null && target.Spawned && !target.Destroyed &&
             target.Map == Map && target.Faction == Faction.OfPlayer;
 
         // Deployment proves geometry only; actual CE shot eligibility is checked by firing guns.
-        internal ArtilleryTargetResult FindGeometry(Faction faction, EmplacementSpec placement, float? effectiveRange = null) =>
+        internal ArtilleryTargetResult FindGeometry(Faction faction, EmplacementSpec placement, float? effectiveRange = null,
+            List<Thing> deploymentTargets = null, float reserve = 0f) =>
             CeArtillerySight.WithGun(Map, faction, placement,
-                gun => Search(gun, false, effectiveRange, wallsOnly: false));
+                gun => Search(gun, false, effectiveRange, wallsOnly: false, deploymentTargets, reserve));
 
         internal ArtilleryTargetResult Find(Building_TurretGunCE gun) => Search(gun, true, null, wallsOnly: false);
 
@@ -85,13 +98,14 @@ namespace RimSiege.Raids.Artillery
 
         // At most two representative wall segments per piece and layout round.
         // This does not invoke CE's full CanHitTargetFrom construction gate.
-        internal FixedCorridorResult CheckFixedCorridor(Faction faction, EmplacementSpec placement, float? effectiveRange) =>
+        internal FixedCorridorResult CheckFixedCorridor(Faction faction, EmplacementSpec placement, float? effectiveRange,
+            List<Thing> deploymentTargets = null, float reserve = 0f) =>
             CeArtillerySight.WithGun(Map, faction, placement, gun =>
             {
                 float range = effectiveRange ?? ((Verb_LaunchProjectileCE)gun.AttackVerb).EffectiveRange;
-                foreach (List<Thing> group in new[] { Walls, Fallback })
+                foreach (List<Thing> group in deploymentTargets == null ? new[] { Walls, Fallback } : new[] { deploymentTargets })
                 {
-                    var ranked = Order(group.Where(t => Filter(gun, t, range, group == Fallback) == ArtilleryTargetReason.GeometryPassed)
+                    var ranked = Order(group.Where(t => Filter(gun, t, range, !shapes.ContainsKey(t), reserve) == ArtilleryTargetReason.GeometryPassed)
                         .Select(t => Rank(gun.Position, t))).ToList();
                     if (ranked.Count == 0) continue;
                     Thing first = ranked[0].Thing;
@@ -109,7 +123,8 @@ namespace RimSiege.Raids.Artillery
                 return new FixedCorridorResult(FixedObstruction.Unavailable, IntVec3.Invalid);
             });
 
-        private ArtilleryTargetResult Search(Building_TurretGunCE gun, bool precise, float? effectiveRange, bool wallsOnly)
+        private ArtilleryTargetResult Search(Building_TurretGunCE gun, bool precise, float? effectiveRange, bool wallsOnly,
+            List<Thing> deploymentTargets = null, float reserve = 0f)
         {
             if (gun.AttackVerb is not Verb_LaunchProjectileCE verb)
                 return new ArtilleryTargetResult(LocalTargetInfo.Invalid, ArtilleryTargetReason.UnavailableWeapon, false, false);
@@ -117,14 +132,15 @@ namespace RimSiege.Raids.Artillery
             Pawn operatorPawn = CeArtillerySight.OperatorFor(gun);
             ArtilleryTargetReason reason = ArtilleryTargetReason.NoCandidates;
             bool ceRejected = false;
-            List<Thing>[] groups = wallsOnly ? new[] { Walls } : new[] { Walls, Fallback };
+            List<Thing>[] groups = deploymentTargets != null ? new[] { deploymentTargets }
+                : wallsOnly ? new[] { Walls } : new[] { Walls, Fallback };
             foreach (List<Thing> group in groups)
             {
-                bool fallback = !wallsOnly && group == Fallback;
                 var eligible = new List<Ranked>();
                 foreach (Thing target in group)
                 {
-                    ArtilleryTargetReason rejected = Filter(gun, target, range, fallback);
+                    bool fallback = deploymentTargets != null ? !shapes.ContainsKey(target) : !wallsOnly && group == Fallback;
+                    ArtilleryTargetReason rejected = Filter(gun, target, range, fallback, reserve);
                     if (rejected != ArtilleryTargetReason.GeometryPassed) { reason = rejected; continue; }
                     // Search only asks whether an inexpensive candidate exists; no ray or sort is needed yet.
                     if (!precise)
@@ -163,13 +179,16 @@ namespace RimSiege.Raids.Artillery
 
         // Search-window margins do not belong in final geometry acceptance.
         // Only the minimum-range filter stays conservative for CE's cover exception.
-        internal ArtilleryTargetReason Filter(Building_TurretGunCE gun, Thing target, float range, bool fallback)
+        internal ArtilleryTargetReason Filter(Building_TurretGunCE gun, Thing target, float range, bool fallback, float reserve = 0f)
         {
             if (!Valid(target) || !gun.HostileTo(target)) return ArtilleryTargetReason.InvalidTarget;
             Verb verb = gun.AttackVerb;
             float allowance = Math.Max(target.def.Size.x, target.def.Size.z) + 2f;
             float distance = MaximumRangeDistance(Map, gun.Position, target);
             if (distance > range) return ArtilleryTargetReason.OutsideRange;
+            // Deployment policy only. Firing queries keep reserve=0 and CE's
+            // complete weapon range; nothing changes the real verb or ammo.
+            if (reserve > 0f && distance > range - reserve) return ArtilleryTargetReason.InsufficientDeploymentReserve;
             float minimum = verb.verbProps.EffectiveMinRange(target, gun);
             if (verb.verbProps is VerbPropertiesCE props && props.minRangeInCover >= 0f)
                 minimum = Math.Min(minimum, props.minRangeInCover);

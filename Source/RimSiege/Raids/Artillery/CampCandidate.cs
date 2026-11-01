@@ -14,9 +14,12 @@ namespace RimSiege.Raids.Artillery
         internal readonly float Bearing, Deviation, EntryDistance;
         internal readonly int Sector;
         internal readonly Dictionary<ArtilleryPlacement, FixedCorridorResult> Corridors = new();
+        internal readonly Dictionary<ArtilleryPlacement, float> ApproachCosts = new();
         internal int DirectCount => Plan.Guns.Count(g => g.IsDirectSupport);
         internal int SupportCount => Plan.Guns.Count(g => g.IsSupport);
         internal int DefenseCount => Plan.Guns.Count - SupportCount;
+        internal float? ApproachCost => SupportCount > 0 && Plan.Guns.Where(g => g.IsSupport).All(ApproachCosts.ContainsKey)
+            ? Plan.Guns.Where(g => g.IsSupport).Max(g => ApproachCosts[g]) : null;
 
         internal CampCandidate(CampPlan plan, CampField field, List<ArtilleryPlacement> templates,
             float bearing, int sector, float deviation, float entryDistance)

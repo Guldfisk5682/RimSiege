@@ -92,7 +92,7 @@ namespace RimSiege.Raids.Artillery
         private static IEnumerable<IntVec3> Centers(Map map, IntVec3 entry, CampSiting siting,
             List<ArtilleryPlacement> guns, IReadOnlyDictionary<ArtilleryPlacement, float> ranges)
         {
-            IntVec3 native = RCellFinder.FindSiegePositionFrom(entry, map);
+            IntVec3 native = CampEntrySearch.Find(entry, map);
             var direct = guns.Where(g => g.IsDirectSupport).ToList();
             if (direct.Count == 0)
             {
@@ -110,8 +110,8 @@ namespace RimSiege.Raids.Artillery
                 search.minZ = System.Math.Max(search.minZ, IsoFloor.FirstRow(map, IsoFloor.FloorOf(entry, map)));
                 search.maxZ = System.Math.Min(search.maxZ, IsoFloor.LastRow(map, IsoFloor.FloorOf(entry, map)));
             }
-            // Preserve the native 200-centre budget; direct-fire centres first
-            // satisfy the minimum retreat and prefer its neighbourhood.
+            // Preserve the 200-centre budget. Deployment feasibility and firepower
+            // are ranked by CampPlanner; approach distance orders equivalent sites.
             var candidates = new List<IntVec3>();
             if (native.InBounds(map))
             {
@@ -119,15 +119,33 @@ namespace RimSiege.Raids.Artillery
                     ? IsoFloor.CellOnFloor(IsoFloor.GroundCellOf(native, map), IsoFloor.FloorOf(entry, map), map) : native;
                 if (projected.InBounds(map)) candidates.Add(projected);
             }
-            for (int i = 0; i < CampCenterAttempts; i++) candidates.Add(search.RandomCell);
             float preferred = direct.Min(g => ranges[g]) - CampSiting.RangeMargin;
+            bool floors = IsoFloor.HasFloors(map);
+            int sourceFloor = floors ? IsoFloor.FloorOf(entry, map) : 0;
+            int targetFloor = floors ? IsoFloor.FloorOf(searchTarget, map) : 0;
+            float inner = UnityEngine.Mathf.Max(0f, preferred - CampSiting.CenterTolerance);
+            float outer = preferred + CampSiting.CenterTolerance;
+            if (floors)
+            {
+                inner = UnityEngine.Mathf.Max(0f, IsoFloor.HorizontalReach(inner, sourceFloor, targetFloor));
+                outer = IsoFloor.HorizontalReach(outer, sourceFloor, targetFloor);
+            }
+            // Spend the same sample budget in the actual engagement band,
+            // rather than relying on a few lucky cells in a large square.
+            if (outer >= 0f)
+                for (int i = 0; i < CampCenterAttempts; i++)
+                {
+                    var offset = UnityEngine.Vector3.forward.RotatedBy(Rand.Range(0f, 360f)) * Rand.Range(inner, outer);
+                    IntVec3 cell = (center.ToVector3() + offset).ToIntVec3();
+                    cell.y = 0;
+                    if (search.Contains(cell)) candidates.Add(cell);
+                }
             var ordered = candidates.Select(cell =>
             {
                 float deviation = UnityEngine.Mathf.Abs(siting.Distance(cell, siting.BreachAnchor) - preferred);
                 return (Cell: cell, EntryDistance: siting.Distance(entry, cell), Deviation: deviation);
-            }).OrderBy(candidate => candidate.Deviation).ThenBy(candidate => candidate.EntryDistance);
-            // Keep group alternatives without letting a distant representative
-            // jump ahead of a closer-to-retreat alternative from another group.
+            }).OrderBy(candidate => candidate.EntryDistance).ThenBy(candidate => candidate.Deviation);
+            // Keep the closer alternative first across spatial groups as well.
             var groups = new Dictionary<(int, int, int), Queue<(IntVec3 Cell, float EntryDistance, float Deviation)>>();
             var seen = new HashSet<IntVec3>();
             foreach (var candidate in ordered)
@@ -152,7 +170,7 @@ namespace RimSiege.Raids.Artillery
             void Enqueue(Queue<(IntVec3 Cell, float EntryDistance, float Deviation)> group)
             {
                 var next = group.Peek();
-                frontier.Enqueue(group, (next.Deviation, next.EntryDistance, order++));
+                frontier.Enqueue(group, (next.EntryDistance, next.Deviation, order++));
             }
         }
     }

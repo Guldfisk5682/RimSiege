@@ -27,6 +27,9 @@ namespace RimSiege.Integration
         internal static float Reach(float range, int sourceLevel, int targetLevel) =>
             ProjectZ.Combat.Range3D.Reach(range, sourceLevel, targetLevel);
 
+        internal static float HorizontalReach(float range, int sourceLevel, int targetLevel) =>
+            ProjectZ.Combat.Range3D.HorizontalReach(range, sourceLevel, targetLevel);
+
         public static bool CanSeeBetweenFloors(IntVec3 from, IntVec3 to, Map map) => ProjectZ.Api.CanSeeBetweenFloors(from, to, map);
 
         public static bool OpenSkyOver(IntVec3 cell, Map map) => ProjectZ.Api.OpenSkyOver(cell, map);
