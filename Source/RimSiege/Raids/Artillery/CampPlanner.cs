@@ -7,6 +7,7 @@ using UnityEngine;
 using RimWorld;
 using Verse;
 using Verse.AI;
+using Verse.AI.Group;
 
 namespace RimSiege.Raids.Artillery
 {
@@ -22,7 +23,7 @@ namespace RimSiege.Raids.Artillery
         private const int DirectionSectors = 8;
 
         private sealed record Site(IntVec3 Center, List<ArtilleryPlacement> Possible,
-            int DirectCapacity, int TotalCapacity, int Openness, float Bearing, int Sector,
+            int DirectCapacity, int SupportCapacity, int Openness, float Bearing, int Sector,
             float Deviation, float EntryDistance);
 
         private static int Sector(float bearing) =>
@@ -34,10 +35,10 @@ namespace RimSiege.Raids.Artillery
         {
             plan = null;
             var templates = guns.ToList();
-            if (templates.Count == 0 || siting.Targets.Count == 0 || !entry.InBounds(map)) return false;
-            var direct = new HashSet<ArtilleryPlacement>(templates.Where(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo)));
+            if (!templates.Any(g => g.IsSupport) || siting.Targets.Count == 0 || !entry.InBounds(map)) return false;
+            var direct = new HashSet<ArtilleryPlacement>(templates.Where(g => g.IsDirectSupport));
             float? retreat = direct.Count == 0 ? null : direct.Min(g => effectiveRanges[g]) - CampSiting.RangeMargin;
-            templates = templates.OrderBy(g => direct.Contains(g) ? 0 : 1)
+            templates = templates.OrderBy(g => g.FormationGroup)
                 .ThenBy(g => direct.Contains(g) ? effectiveRanges[g] : 0f)
                 .ThenByDescending(g => g.Def.Size.x * g.Def.Size.z).ToList();
             var placements = new Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool>();
@@ -47,20 +48,20 @@ namespace RimSiege.Raids.Artillery
             {
                 if (!center.InBounds(map) || !center.Walkable(map)) continue;
                 bool directAllowed = !retreat.HasValue || siting.Allows(center, retreat.Value);
-                var possible = templates.Where(g => (directAllowed || !direct.Contains(g)) &&
+                var possible = templates.Where(g => !g.IsSupport || (directAllowed || !direct.Contains(g)) &&
                     InRange(map, center, g.Def, siting.Targets, 14f,
                         effectiveRanges == null ? null : effectiveRanges[g])).ToList();
-                if (possible.Count == 0 || !CanReach(map, entry, center, null)) continue;
+                if (!possible.Any(g => g.IsSupport) || !CanReach(map, entry, center, null)) continue;
                 var survey = CampField.Survey(map, center, terrain);
                 if (survey.Capacity == 0) continue;
                 float bearing = siting.Bearing(center);
                 sites.Add(new Site(center, possible, Math.Min(survey.Capacity, possible.Count(direct.Contains)),
-                    Math.Min(survey.Capacity, possible.Count), survey.Openness, bearing, Sector(bearing),
+                    Math.Min(survey.Capacity, possible.Count(g => g.IsSupport)), survey.Openness, bearing, Sector(bearing),
                     retreat.HasValue ? Math.Abs(siting.Distance(center, siting.BreachAnchor) - retreat.Value) : 0f,
                     siting.Distance(entry, center)));
             }
 
-            var directions = sites.OrderByDescending(s => s.DirectCapacity).ThenByDescending(s => s.TotalCapacity)
+            var directions = sites.OrderByDescending(s => s.DirectCapacity).ThenByDescending(s => s.SupportCapacity)
                 .ThenByDescending(s => s.Openness).ThenBy(s => s.Deviation).ThenBy(s => s.EntryDistance)
                 .GroupBy(s => s.Sector).Select(group => new Queue<Site>(group)).ToList();
             var selected = new List<(Queue<Site> Queue, float Bearing)>();
@@ -74,7 +75,7 @@ namespace RimSiege.Raids.Artillery
                     .ThenByDescending(q => selected.Count == 0
                         ? -Math.Abs(Mathf.DeltaAngle(entryBearing, q.Peek().Bearing))
                         : selected.Min(chosen => Math.Abs(Mathf.DeltaAngle(chosen.Bearing, q.Peek().Bearing))))
-                    .ThenByDescending(q => q.Peek().TotalCapacity).ThenByDescending(q => q.Peek().Openness)
+                    .ThenByDescending(q => q.Peek().SupportCapacity).ThenByDescending(q => q.Peek().Openness)
                     .ThenBy(q => q.Peek().Deviation).ThenBy(q => q.Peek().EntryDistance).First();
                 directions.Remove(queue);
                 CampCandidate candidate = Next(queue);
@@ -94,10 +95,10 @@ namespace RimSiege.Raids.Artillery
             CampCandidate best = null;
             int precise = 0;
             foreach (CampCandidate candidate in candidates.OrderByDescending(c => c.DirectCount)
-                .ThenByDescending(c => c.Plan.Guns.Count).ThenByDescending(c => c.Field.Openness)
-                .ThenBy(c => c.Deviation).ThenBy(c => c.EntryDistance))
+                .ThenByDescending(c => c.SupportCount).ThenByDescending(c => c.Field.Openness)
+                .ThenBy(c => c.Deviation).ThenBy(c => c.EntryDistance).ThenByDescending(c => c.DefenseCount))
             {
-                if (candidate.Plan.Guns.Count == 0 || best != null && !Better(candidate, best)) continue;
+                if (candidate.SupportCount == 0 || best != null && !Better(candidate, best)) continue;
                 if (precise >= MaxLayoutRounds) break;
                 if (ValidateAndRepair(map, faction, entry, candidate, siting, effectiveRanges, false, ref precise) &&
                     Better(candidate, best)) best = candidate;
@@ -131,14 +132,13 @@ namespace RimSiege.Raids.Artillery
             var retained = new List<ArtilleryPlacement>();
             foreach (ArtilleryPlacement template in site.Possible)
             {
-                bool direct = CeArtillerySight.IsDirectFire(template.Def, template.Ammo);
-                int ordinal = retained.Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct);
-                int count = site.Possible.Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct);
+                int ordinal = retained.Count(g => g.FormationGroup == template.FormationGroup);
+                int count = site.Possible.Count(g => g.FormationGroup == template.FormationGroup);
                 ArtilleryPlacement gun = FindPlacement(map, faction, entry, plan, template, siting,
                     ranges == null ? null : ranges[template], field, ordinal, count);
                 if (gun != null) { plan.Guns.Add(gun); retained.Add(template); }
             }
-            return plan.Guns.Count == 0 ? null : new CampCandidate(plan, field, retained,
+            return !plan.Guns.Any(g => g.IsSupport) ? null : new CampCandidate(plan, field, retained,
                 site.Bearing, site.Sector, site.Deviation, site.EntryDistance);
         }
 
@@ -146,10 +146,11 @@ namespace RimSiege.Raids.Artillery
         {
             if (previous == null) return true;
             if (candidate.DirectCount != previous.DirectCount) return candidate.DirectCount > previous.DirectCount;
-            if (candidate.Plan.Guns.Count != previous.Plan.Guns.Count) return candidate.Plan.Guns.Count > previous.Plan.Guns.Count;
+            if (candidate.SupportCount != previous.SupportCount) return candidate.SupportCount > previous.SupportCount;
             if (candidate.Field.Openness != previous.Field.Openness) return candidate.Field.Openness > previous.Field.Openness;
             if (candidate.Deviation != previous.Deviation) return candidate.Deviation < previous.Deviation;
-            return candidate.EntryDistance < previous.EntryDistance;
+            if (candidate.EntryDistance != previous.EntryDistance) return candidate.EntryDistance < previous.EntryDistance;
+            return candidate.DefenseCount > previous.DefenseCount;
         }
 
         private static void ScreenCandidate(Faction faction, CampCandidate candidate, CampSiting siting,
@@ -168,16 +169,17 @@ namespace RimSiege.Raids.Artillery
             for (int i = 0; i < plan.Guns.Count; i++)
             {
                 ArtilleryPlacement gun = plan.Guns[i];
+                if (!gun.IsSupport) continue;
                 float? range = ranges == null ? null : ranges[candidate.Templates[i]];
                 if (!siting.Candidates.FindGeometry(faction, Spec(gun), range).HasTarget) failed.Add(gun);
-                else if (CeArtillerySight.IsDirectFire(gun.Def, gun.Ammo))
+                else if (gun.IsDirectSupport)
                 {
                     if (!candidate.Corridors.TryGetValue(gun, out FixedCorridorResult result))
                         candidate.Corridors[gun] = result = siting.Candidates.CheckFixedCorridor(faction, Spec(gun), range);
                     if (!result.Clear) { failed.Add(gun); blocked.Add(gun); }
                 }
             }
-            var front = plan.Guns.Where(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo)).ToList();
+            var front = plan.Guns.Where(g => g.IsDirectSupport).ToList();
             lostFront = front.Count > 0 && front.All(blocked.Contains);
             MarkRetreatFailures(plan, siting, candidate.Templates, ranges, failed);
         }
@@ -186,14 +188,14 @@ namespace RimSiege.Raids.Artillery
             ArtilleryPlacement template, CampSiting siting, float? range, CampField field, int ordinal, int count,
             ArtilleryPlacement excluded = null, int? insertAt = null)
         {
-            bool direct = CeArtillerySight.IsDirectFire(template.Def, template.Ammo);
-            foreach (CampField.Slot slot in field.Candidates(template, direct, ordinal, count))
+            foreach (CampField.Slot slot in field.Candidates(template, ordinal, count))
             {
                 var gun = new ArtilleryPlacement { Def = template.Def, Stuff = template.Stuff, Ammo = template.Ammo,
-                    Cell = slot.Cell, Rotation = slot.Rotation, Operator = template.Operator };
+                    Cell = slot.Cell, Rotation = slot.Rotation, Operator = template.Operator, Role = template.Role };
                 if (excluded != null && excluded.Cell == gun.Cell && excluded.Rotation == gun.Rotation) continue;
-                if (!Fits(camp, gun) || !InRange(map, gun.Cell, gun.Def, siting.Targets, 2f, range) ||
-                    !siting.Candidates.FindGeometry(faction, Spec(gun), range).HasTarget) continue;
+                if (!Fits(camp, gun) || gun.IsSupport &&
+                    (!InRange(map, gun.Cell, gun.Def, siting.Targets, 2f, range) ||
+                    !siting.Candidates.FindGeometry(faction, Spec(gun), range).HasTarget)) continue;
                 int index = insertAt ?? camp.Guns.Count;
                 camp.Guns.Insert(index, gun);
                 bool valid = LayoutValid(map, entry, camp, gun.Operator != null, false, field, out _);
@@ -231,14 +233,15 @@ namespace RimSiege.Raids.Artillery
             if (siting.Targets.Count == 0) return false;
             var job = (LordJob_Artillery)raid.CampLord.LordJob;
             if (job.RequiresOperators)
-                plan.Guns.RemoveAll(g => g.Operator == null || !g.Operator.Spawned || g.Operator.Map != map);
+                plan.Guns.RemoveAll(g => g.NeedsOperator && (g.Operator == null || !g.Operator.Spawned || g.Operator.Map != map));
             var templates = plan.Guns.ToList();
-            if (templates.Count == 0) return false;
-            var ranges = templates.ToDictionary(g => g, g => CeArtillerySight.EffectiveRange(map, raid.Faction, Spec(g)));
+            if (!templates.Any(g => g.IsSupport)) return false;
+            var ranges = templates.ToDictionary(g => g, g => !g.IsSupport ? 0f : CeArtillerySight.EffectiveRange(map, raid.Faction, Spec(g)));
             var cache = new Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool>();
             var field = new CampField(map, plan.Center, siting.BreachAnchor, plan.Cover, new(), cache)
             {
-                ConstructionWorker = job.ConstructionWorker
+                ConstructionWorker = job.ConstructionWorker ?? raid.CampLord.ownedPawns
+                    .FirstOrDefault(p => ArtilleryCrew.CanBuild((LordToil_Siege)raid.CampLord.CurLordToil, p))
             };
             float bearing = siting.Bearing(plan.Center);
             var candidate = new CampCandidate(plan, field, templates, bearing, Sector(bearing), 0f, 0f);
@@ -253,7 +256,7 @@ namespace RimSiege.Raids.Artillery
             CampPlan plan = candidate.Plan;
             List<ArtilleryPlacement> templates = candidate.Templates;
             var repaired = new HashSet<ArtilleryPlacement>();
-            while (plan.Guns.Count > 0 && rounds < MaxLayoutRounds)
+            while (plan.Guns.Any(g => g.IsSupport) && rounds < MaxLayoutRounds)
             {
                 rounds++;
                 if (!ValidateLayout(map, faction, entry, candidate, siting, ranges, actual,
@@ -271,11 +274,10 @@ namespace RimSiege.Raids.Artillery
                         if (!failed.Contains(gun) || !repaired.Add(template)) continue;
                         int index = reinserted;
                         for (int j = 0; j < i; j++) if (!failed.Contains(originalGuns[j])) index++;
-                        bool direct = CeArtillerySight.IsDirectFire(gun.Def, gun.Ammo);
-                        ArtilleryPlacement replacement = FindPlacement(map, faction, actual ? gun.Operator.Position : entry,
+                        ArtilleryPlacement replacement = FindPlacement(map, faction, actual && gun.NeedsOperator ? gun.Operator.Position : entry,
                             plan, gun, siting, ranges == null ? null : ranges[template], candidate.Field,
-                            originalGuns.Take(i).Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct),
-                            originalGuns.Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo) == direct), gun, index);
+                            originalGuns.Take(i).Count(g => g.FormationGroup == gun.FormationGroup),
+                            originalGuns.Count(g => g.FormationGroup == gun.FormationGroup), gun, index);
                         if (replacement == null) continue;
                         plan.Guns.Insert(index, replacement);
                         templates.Insert(index, template);
@@ -319,7 +321,7 @@ namespace RimSiege.Raids.Artillery
             var guns = plan.Guns.ToList();
             var originals = templates.ToList();
             var priority = Enumerable.Range(0, guns.Count)
-                .OrderBy(i => CeArtillerySight.IsDirectFire(guns[i].Def, guns[i].Ammo) ? 0 : 1)
+                .OrderBy(i => guns[i].FormationGroup)
                 .ThenBy(i => ranges == null ? 0f : ranges[originals[i]]).ToList();
             for (int count = priority.Count; count > 0; count--)
                 if (TrySubset(priority.Take(count))) return true;
@@ -341,7 +343,7 @@ namespace RimSiege.Raids.Artillery
                 MarkRetreatFailures(plan, siting, templates, ranges, failed);
                 for (int i = plan.Guns.Count - 1; i >= 0; i--)
                     if (failed.Contains(plan.Guns[i])) { plan.Guns.RemoveAt(i); templates.RemoveAt(i); }
-                return plan.Guns.Count > 0 && CampSupplies.CanSupply(map, plan);
+                return plan.Guns.Any(g => g.IsSupport) && CampSupplies.CanSupply(map, plan);
             }
         }
 
@@ -350,7 +352,7 @@ namespace RimSiege.Raids.Artillery
         {
             if (ranges == null) return;
             var direct = Enumerable.Range(0, plan.Guns.Count).Where(i =>
-                !failed.Contains(plan.Guns[i]) && CeArtillerySight.IsDirectFire(plan.Guns[i].Def, plan.Guns[i].Ammo)).ToList();
+                !failed.Contains(plan.Guns[i]) && plan.Guns[i].IsDirectSupport).ToList();
             if (direct.Count == 0 || siting.Allows(plan.Center,
                 direct.Min(i => ranges[templates[i]]) - CampSiting.RangeMargin)) return;
             foreach (int i in direct) failed.Add(plan.Guns[i]);
@@ -406,8 +408,9 @@ namespace RimSiege.Raids.Artillery
                 if (!field.Contains(interaction) || !interaction.Walkable(map) ||
                     (occupied.Contains(interaction) && !GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size).Contains(interaction)) || !reserved.Add(interaction))
                 { failed.Add(gun); continue; }
-                IntVec3 start = actual ? gun.Operator?.Position ?? IntVec3.Invalid : entry;
-                Pawn pawn = actual ? gun.Operator : field.ConstructionWorker;
+                bool operated = actual && gun.NeedsOperator;
+                IntVec3 start = operated ? gun.Operator?.Position ?? IntVec3.Invalid : entry;
+                Pawn pawn = operated ? gun.Operator : field.ConstructionWorker;
                 var blockers = new HashSet<IntVec3>(impassable);
                 blockers.Remove(interaction);
                 if (!(precise ? Reachable(map, start, interaction, blockers, pawn) : CanReach(map, start, interaction, pawn)))

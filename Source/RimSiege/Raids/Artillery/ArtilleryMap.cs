@@ -12,7 +12,8 @@ namespace RimSiege.Raids.Artillery
     {
         private List<ArtilleryRaid> raids = new List<ArtilleryRaid>();
         private readonly Dictionary<Pawn, ArtilleryRaid> members = new Dictionary<Pawn, ArtilleryRaid>();
-        private readonly Dictionary<Thing, ArtilleryRaid> guns = new Dictionary<Thing, ArtilleryRaid>();
+        private readonly record struct GunOwner(ArtilleryRaid Raid, ArtilleryPlacement Placement);
+        private readonly Dictionary<Thing, GunOwner> guns = new();
         private List<Building> orphanGuns = new List<Building>();
         private int nextKey = 1;
 
@@ -36,7 +37,8 @@ namespace RimSiege.Raids.Artillery
         internal ArtilleryRaid ForKey(int key) => raids.FirstOrDefault(r => r.Key == key);
         internal IEnumerable<ArtilleryRaid> ActiveRaids => raids.Where(r => r.Phase != ArtilleryPhase.Abandoned);
         internal ArtilleryRaid ForPawn(Pawn pawn) => pawn != null && members.TryGetValue(pawn, out ArtilleryRaid raid) ? raid : null;
-        internal ArtilleryRaid ForGun(Thing gun) => gun != null && guns.TryGetValue(gun, out ArtilleryRaid raid) ? raid : null;
+        internal ArtilleryRaid ForGun(Thing gun) => gun != null && guns.TryGetValue(gun, out GunOwner owner) ? owner.Raid : null;
+        internal ArtilleryPlacement ForGunPlacement(Thing gun) => gun != null && guns.TryGetValue(gun, out GunOwner owner) ? owner.Placement : null;
         internal ArtilleryRaid ForLord(Lord lord)
         {
             if (lord == null) return null;
@@ -51,7 +53,7 @@ namespace RimSiege.Raids.Artillery
                 raid.Camp.Guns.Any(g => g.Operator == pawn);
         }
 
-        internal void TrackGun(Thing gun, ArtilleryRaid raid) => guns[gun] = raid;
+        internal void TrackGun(Thing gun, ArtilleryRaid raid, ArtilleryPlacement placement) => guns[gun] = new GunOwner(raid, placement);
         internal void ForgetGun(Thing gun)
         {
             guns.Remove(gun);

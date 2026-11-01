@@ -9,7 +9,7 @@ namespace RimSiege.Raids.Artillery
     {
         private int raidKey;
         private ArtilleryRaidKind kind;
-        private bool pendingInterference;
+        private bool pendingInfantryAssault;
 
         public LordJob_Artillery() { }
 
@@ -51,15 +51,15 @@ namespace RimSiege.Raids.Artillery
                 t.triggers.Any(trigger => trigger is Trigger_BecameNonHostileToPlayer)).AddSource(defend);
             siege.AddFailCondition(() => lord.ownedPawns.Count == 0);
             exit.AddFailCondition(() => lord.ownedPawns.Count == 0);
+            Transition siegeAssault = graph.transitions.First(t => t.target == assault && t.sources.Contains(siege));
+            for (int i = 0; i < siegeAssault.triggers.Count; i++)
+                if (siegeAssault.triggers[i] is Trigger_PawnHarmed or Trigger_FractionPawnsLost or Trigger_TicksPassed)
+                    siegeAssault.triggers[i] = new Trigger_ArtilleryInfantryAssault(siegeAssault.triggers[i]);
             if (kind != ArtilleryRaidKind.Siege)
             {
                 LordToil failed = new LordToil_ArtilleryTransfer();
                 graph.AddToil(failed);
-                Transition siegeAssault = graph.transitions.First(t => t.target == assault && t.sources.Contains(siege));
                 siegeAssault.target = failed;
-                for (int i = 0; i < siegeAssault.triggers.Count; i++)
-                    if (siegeAssault.triggers[i] is Trigger_PawnHarmed harmed)
-                        siegeAssault.triggers[i] = new Trigger_ArtilleryInterference(harmed);
                 // The native wake action runs after the transition; transfer empties this lord.
                 siegeAssault.AddPreAction(new TransitionAction_WakeAll());
             }
@@ -75,13 +75,12 @@ namespace RimSiege.Raids.Artillery
             base.ExposeData();
             Scribe_Values.Look(ref raidKey, "raidKey");
             Scribe_Values.Look(ref kind, "kind");
-            Scribe_Values.Look(ref pendingInterference, "pendingInterference");
+            Scribe_Values.Look(ref pendingInfantryAssault, "pendingInterference");
         }
 
-        internal void NotifyInterference()
+        internal void RequestInfantryAssault()
         {
-            if (kind != ArtilleryRaidKind.Siege && Raid.Phase == ArtilleryPhase.Building && !Raid.InfantryReleased)
-                pendingInterference = true;
+            if (lord.CurLordToil is LordToil_Siege) pendingInfantryAssault = true;
         }
 
         public override void Notify_AddedToLord()
@@ -95,11 +94,14 @@ namespace RimSiege.Raids.Artillery
         {
             base.LordJobTick();
             ArtilleryRaid raid = Raid;
-            if (pendingInterference && lord.CurLordToil is LordToil_Siege && !raid.InfantryReleased)
+            if (pendingInfantryAssault && lord.CurLordToil is LordToil_Siege)
             {
-                pendingInterference = false;
-                ArtilleryCamp.CancelUnfinished(raid);
-                ArtilleryCamp.ReleaseInfantry(raid, lord);
+                pendingInfantryAssault = false;
+                // A true loss of construction capability still abandons work.
+                // Being fired upon alone leaves its blueprints/materials intact.
+                if (ArtilleryCrew.HasConstruction(raid) && !ArtilleryCrew.HasBuilder(lord))
+                    ArtilleryCamp.CancelUnfinished(raid);
+                ArtilleryCamp.ReleaseInfantry(raid, lord, underFire: true);
             }
             if (lord.CurLordToil is LordToil_Siege && raid.Phase == ArtilleryPhase.Assaulting && !raid.SuppliesDelivered)
                 lord.ReceiveMemo("NoBuilders");
@@ -115,11 +117,11 @@ namespace RimSiege.Raids.Artillery
         }
     }
 
-    internal sealed class Trigger_ArtilleryInterference : Trigger
+    internal sealed class Trigger_ArtilleryInfantryAssault : Trigger
     {
-        private readonly Trigger_PawnHarmed original;
+        private readonly Trigger original;
 
-        internal Trigger_ArtilleryInterference(Trigger_PawnHarmed original)
+        internal Trigger_ArtilleryInfantryAssault(Trigger original)
         {
             this.original = original;
             data = original.data;
@@ -137,13 +139,8 @@ namespace RimSiege.Raids.Artillery
             original.data = data;
             if (!original.ActivateOn(lord, signal)) return false;
             var job = (LordJob_Artillery)lord.LordJob;
-            ArtilleryRaid raid = job.Raid;
-            if (raid.Phase == ArtilleryPhase.Building && !raid.InfantryReleased)
-            {
-                job.NotifyInterference();
-                return false;
-            }
-            return true;
+            if (!job.Raid.InfantryReleased) job.RequestInfantryAssault();
+            return false;
         }
     }
 

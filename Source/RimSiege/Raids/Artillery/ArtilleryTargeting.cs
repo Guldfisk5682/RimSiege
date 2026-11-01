@@ -61,6 +61,7 @@ namespace RimSiege.Raids.Artillery
             __state = false;
             ArtilleryRaid raid = ArtilleryRegistry.Find(__instance);
             if (raid == null || ___forcedTarget.IsValid) return true;
+            if (ArtilleryRegistry.Placement(__instance)?.Role == ArtilleryGunRole.CampDefense) return true;
             // Mechanoid direct-fire: let CE's 3D TryFindNewTarget run, then wall-fallback in Postfix.
             if (raid.Kind == ArtilleryRaidKind.Mechanoid &&
                 CeArtillerySight.IsDirectFire(__instance.def, __instance.CompAmmo?.CurrentAmmo))

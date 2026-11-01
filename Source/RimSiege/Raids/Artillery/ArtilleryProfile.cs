@@ -14,6 +14,9 @@ namespace RimSiege.Raids.Artillery
         public float personnelFactor = 1f;
         public SimpleCurve personnelCurve;
         public float equipmentFraction = 0.3f;
+        public float constructionSpeedOffset;
+        public float constructionSpeedScale = 1f;
+        public float constructionSpeedCap = 10f;
         public FloatRange budgetShare;
         public SimpleCurve totalPieces;
         public int mortarClassLimit = 5;
@@ -21,6 +24,9 @@ namespace RimSiege.Raids.Artillery
 
         internal float PersonnelPoints(float raidPoints, float pawnPoints) =>
             pawnPoints * (personnelCurve != null ? personnelCurve.Evaluate(raidPoints) : personnelFactor);
+
+        internal float ConstructionSpeed(float raidPoints) =>
+            Mathf.Min(constructionSpeedCap, constructionSpeedScale * (Mathf.Log(raidPoints / 100f) + constructionSpeedOffset));
 
         internal bool BelowGate(float raidPoints) =>
             raidPoints < minPoints || (totalPieces != null && totalPieces.Evaluate(raidPoints) < 1f);
@@ -40,6 +46,7 @@ namespace RimSiege.Raids.Artillery
                 foreach (ArtilleryGunRule rule in guns)
                 {
                     if (rule.turret == null || rule.turret.techLevel > faction.def.techLevel) continue;
+                    if (rule.role == ArtilleryGunRole.CampDefense && !result.Exists(g => g.IsSupport)) continue;
                     float cost = rule.ResolvedCost;
                     if (cost > remaining) continue;
                     used.TryGetValue(rule, out int count);
@@ -48,7 +55,7 @@ namespace RimSiege.Raids.Artillery
                     ThingDef previewAmmo = rule.ammo;
                     if (previewAmmo == null && rule.defaultAmmo)
                         previewAmmo = SelectAmmo(rule.turret, faction, true);
-                    bool mortar = !CeArtillerySight.IsDirectFire(rule.turret, previewAmmo);
+                    bool mortar = rule.role == ArtilleryGunRole.Support && !CeArtillerySight.IsDirectFire(rule.turret, previewAmmo);
                     if (mortar && mortarCount >= mortarClassLimit) continue;
                     choices.Add(rule);
                 }
@@ -66,12 +73,13 @@ namespace RimSiege.Raids.Artillery
                 {
                     Def = selected.turret,
                     Stuff = selected.turret.MadeFromStuff ? ThingDefOf.Steel : null,
-                    Ammo = ammo
+                    Ammo = ammo,
+                    Role = selected.role
                 });
                 used.TryGetValue(selected, out int previous);
                 used[selected] = previous + 1;
                 remaining -= selected.ResolvedCost;
-                if (!CeArtillerySight.IsDirectFire(selected.turret, ammo)) mortarCount++;
+                if (selected.role == ArtilleryGunRole.Support && !CeArtillerySight.IsDirectFire(selected.turret, ammo)) mortarCount++;
             }
             return result;
         }
@@ -97,6 +105,7 @@ namespace RimSiege.Raids.Artillery
 
     public sealed class ArtilleryGunRule
     {
+        public ArtilleryGunRole role = ArtilleryGunRole.Support;
         public ThingDef turret;
         public ThingDef ammo;
         // cost <= 0 resolves to turret.building.combatPower at configure time.

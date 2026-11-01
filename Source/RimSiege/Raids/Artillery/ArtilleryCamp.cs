@@ -24,6 +24,7 @@ namespace RimSiege.Raids.Artillery
             for (int i = 0; i < raid.Camp.Guns.Count; i++)
             {
                 ArtilleryPlacement gun = raid.Camp.Guns[i];
+                if (!gun.NeedsOperator) continue;
                 Pawn pawn = available.OrderBy(p => p.Position.DistanceToSquared(gun.Cell)).FirstOrDefault();
                 if (pawn == null)
                 {
@@ -33,7 +34,7 @@ namespace RimSiege.Raids.Artillery
                 gun.Operator = pawn;
                 available.Remove(pawn);
             }
-            return raid.Camp.Guns.Count != 0;
+            return raid.Camp.Guns.Any(g => g.IsSupport);
         }
 
         internal static bool Prepare(ArtilleryRaid raid, Lord lord)
@@ -73,7 +74,7 @@ namespace RimSiege.Raids.Artillery
                 item.Frame = null;
                 if (raid.Camp.Guns.Contains(item))
                 {
-                    building.Map.GetComponent<ArtilleryMap>().TrackGun(building, raid);
+                    building.Map.GetComponent<ArtilleryMap>().TrackGun(building, raid, item);
                     // Mech cluster turrets ship with CompCanBeDormant/CompMechanoid; construction
                     // leaves them usable only once awake. Force wake so they fight immediately.
                     if (newlyObserved)
@@ -105,8 +106,8 @@ namespace RimSiege.Raids.Artillery
             var released = new List<Pawn>();
             foreach (ArtilleryPlacement item in Placements(raid.Camp))
             {
-                if (item.Blueprint != null && item.Blueprint.Destroyed) item.Blueprint = null;
-                if (item.Frame != null && item.Frame.Destroyed) item.Frame = null;
+                if (item.Blueprint != null && (item.Blueprint.Destroyed || item.Blueprint.Faction != raid.Faction)) item.Blueprint = null;
+                if (item.Frame != null && (item.Frame.Destroyed || item.Frame.Faction != raid.Faction)) item.Frame = null;
                 if (item.Building != null && (!item.Building.Spawned || item.Building.Faction != raid.Faction))
                 {
                     map.GetComponent<ArtilleryMap>().ForgetGun(item.Building);
@@ -129,7 +130,7 @@ namespace RimSiege.Raids.Artillery
             }
             raid.Camp.Guns.RemoveAll(item => item.Building == null && item.Frame == null && item.Blueprint == null);
             raid.Camp.Cover.RemoveAll(item => item.Building == null && item.Frame == null && item.Blueprint == null);
-            if (raid.InfantryReleased && raid.Kind != ArtilleryRaidKind.Siege && raid.CampLord != null)
+            if (raid.InfantryReleased && raid.CampLord != null)
                 TransferToAssault(raid, raid.CampLord, released);
         }
 
@@ -150,7 +151,9 @@ namespace RimSiege.Raids.Artillery
             if (raid.AssaultLord != null && !camp.Map.lordManager.lords.Contains(raid.AssaultLord)) raid.AssaultLord = null;
             camp.RemovePawns(pawns);
             foreach (Pawn pawn in pawns)
-                if (pawn.jobs?.curJob?.lord == camp) pawn.jobs.EndCurrentJob(JobCondition.InterruptForced, startNewJob: false);
+                // Work-giver construction/hauling jobs may have no job.lord.
+                // They must end too when this pawn leaves the construction group.
+                if (pawn.jobs?.curJob != null) pawn.jobs.EndCurrentJob(JobCondition.InterruptForced, startNewJob: false);
             if (raid.AssaultLord == null) raid.AssaultLord = ArtilleryRaidPatches.MakeOriginalLord(raid, camp.Map, pawns);
             else raid.AssaultLord.AddPawns(pawns);
             raid.AssaultCreated = true;
@@ -164,17 +167,19 @@ namespace RimSiege.Raids.Artillery
             }
         }
 
-        internal static void ReleaseInfantry(ArtilleryRaid raid, Lord camp)
+        internal static void ReleaseInfantry(ArtilleryRaid raid, Lord camp, bool underFire = false)
         {
-            if (raid.InfantryReleased || raid.Kind == ArtilleryRaidKind.Siege) return;
+            if (raid.InfantryReleased || raid.Kind == ArtilleryRaidKind.Siege && !underFire) return;
             RefreshConstruction(raid, camp.Map);
             RefreshOperators(raid, camp);
-            var operators = new HashSet<Pawn>(raid.Camp.Guns.Where(g => g.Operator != null).Select(g => g.Operator));
-            var attackers = camp.ownedPawns.Where(p => !operators.Contains(p)).ToList();
+            var crew = ArtilleryCrew.Retained(raid, camp);
+            var attackers = camp.ownedPawns.Where(p => !crew.Contains(p)).ToList();
             raid.InfantryReleased = true;
-            raid.Phase = operators.Count == 0 ? ArtilleryPhase.Assaulting : ArtilleryPhase.Supporting;
+            raid.Phase = ArtilleryCrew.HasSupportConstruction(raid) ? ArtilleryPhase.Building
+                : crew.Count == 0 ? ArtilleryPhase.Assaulting : ArtilleryPhase.Supporting;
             foreach (Pawn pawn in attackers) RestUtility.WakeUp(pawn);
             TransferToAssault(raid, camp, attackers);
+            if (camp.ownedPawns.Count != 0) camp.CurLordToil.UpdateAllDuties();
         }
 
         internal static void RefreshOperators(ArtilleryRaid raid, Lord camp)
@@ -183,8 +188,10 @@ namespace RimSiege.Raids.Artillery
             var released = new List<Pawn>();
             foreach (ArtilleryPlacement gun in raid.Camp.Guns)
             {
+                if (!gun.NeedsOperator) continue;
                 Pawn pawn = gun.Operator;
-                if (gun.Building == null || !gun.Building.Spawned || gun.Building.Faction != raid.Faction ||
+                bool liveSite = gun.Building?.Spawned == true && gun.Building.Faction == raid.Faction || ArtilleryCrew.Pending(gun);
+                if (!liveSite ||
                     pawn == null || !camp.ownedPawns.Contains(pawn) || !pawn.Spawned || pawn.Map != camp.Map ||
                     pawn.Faction != raid.Faction || pawn.Dead || pawn.Downed || pawn.InMentalState ||
                     !pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation))
@@ -195,7 +202,7 @@ namespace RimSiege.Raids.Artillery
                 }
             }
             ReassignOperators(raid, camp);
-            if (raid.InfantryReleased && raid.Kind != ArtilleryRaidKind.Siege)
+            if (raid.InfantryReleased)
                 TransferToAssault(raid, camp, released.Where(p => !raid.Camp.Guns.Any(g => g.Operator == p)).ToList());
         }
 
@@ -221,11 +228,15 @@ namespace RimSiege.Raids.Artillery
             if (assault != null && !camp.Map.lordManager.lords.Contains(assault)) assault = null;
             foreach (ArtilleryPlacement gun in raid.Camp.Guns)
             {
-                if (gun.Operator != null || gun.Building == null || !gun.Building.Spawned || gun.Building.Faction != raid.Faction) continue;
+                if (!gun.NeedsOperator || gun.Operator != null) continue;
+                Thing site = gun.Building?.Spawned == true && gun.Building.Faction == raid.Faction ? gun.Building
+                    : gun.Frame?.Spawned == true ? gun.Frame : gun.Blueprint?.Spawned == true ? gun.Blueprint : null;
+                if (site == null) continue;
+                PathEndMode end = site is Blueprint or Frame ? PathEndMode.Touch : PathEndMode.InteractionCell;
                 Pawn pawn = raid.Members.Where(p => p != null && p != excluded && (p.GetLord() == camp || p.GetLord() == assault && assault != null) &&
                         p.Map == camp.Map && p.Faction == raid.Faction && CanOperate(p) &&
                         !raid.Camp.Guns.Any(g => g.Operator == p) &&
-                        p.CanReserveAndReach(gun.Building, PathEndMode.InteractionCell, Danger.Deadly))
+                        p.CanReserveAndReach(site, end, Danger.Deadly))
                     .OrderBy(p => p.Position.DistanceToSquared(gun.Cell)).FirstOrDefault();
                 if (pawn == null) continue;
                 gun.Operator = pawn;

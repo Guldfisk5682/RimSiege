@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using RimSiege.Combat.Aiming;
-using RimSiege.Integration;
 
 namespace RimSiege.Raids.Artillery
 {
@@ -15,7 +14,9 @@ namespace RimSiege.Raids.Artillery
         internal readonly float Bearing, Deviation, EntryDistance;
         internal readonly int Sector;
         internal readonly Dictionary<ArtilleryPlacement, FixedCorridorResult> Corridors = new();
-        internal int DirectCount => Plan.Guns.Count(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo));
+        internal int DirectCount => Plan.Guns.Count(g => g.IsDirectSupport);
+        internal int SupportCount => Plan.Guns.Count(g => g.IsSupport);
+        internal int DefenseCount => Plan.Guns.Count - SupportCount;
 
         internal CampCandidate(CampPlan plan, CampField field, List<ArtilleryPlacement> templates,
             float bearing, int sector, float deviation, float entryDistance)

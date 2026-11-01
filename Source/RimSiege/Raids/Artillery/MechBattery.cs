@@ -10,7 +10,7 @@ namespace RimSiege.Raids.Artillery
     {
         internal const float ConstructoidCombatPower = 10f;
         internal const int ConstructoidMin = 1;
-        internal const int ConstructoidMax = 4;
+        internal const int ConstructoidMax = 10;
 
         internal static int RollConstructoids() => Rand.RangeInclusive(ConstructoidMin, ConstructoidMax);
 

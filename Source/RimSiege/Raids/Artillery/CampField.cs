@@ -106,7 +106,7 @@ namespace RimSiege.Raids.Artillery
 
         internal bool Contains(IntVec3 cell) => interior.Contains(cell);
 
-        internal IEnumerable<Slot> Candidates(ArtilleryPlacement template, bool direct, int ordinal, int count)
+        internal IEnumerable<Slot> Candidates(ArtilleryPlacement template, int ordinal, int count)
         {
             var key = (template.Def, template.Stuff);
             if (!slots.TryGetValue(key, out List<Slot> available))
@@ -125,10 +125,13 @@ namespace RimSiege.Raids.Artillery
                     if (valid) available.Add(new Slot(cell, rotation));
                 }
             }
-            // Spread direct pieces across the front and mortars across the rear.
+            // Support occupies the front/rear rows first; camp defense uses
+            // the rear flanks of the same native cover enclosure.
             // Physical separation and work/supply reservations are checked later.
             float lateral = count <= 1 ? 0f : Mathf.Lerp(-BatteryHalfWidth, BatteryHalfWidth, ordinal / (float)(count - 1));
-            Vector2 desired = forward * (direct ? RowDepth : -RowDepth) + right * lateral;
+            Vector2 desired = template.IsSupport
+                ? forward * (template.IsDirectSupport ? RowDepth : -RowDepth) + right * lateral
+                : -forward * (RowDepth * 2f) + right * (ordinal % 2 == 0 ? -BatteryHalfWidth : BatteryHalfWidth);
             return available.OrderBy(slot =>
             {
                 Vector2 offset = new Vector2(slot.Cell.x - Center.x, slot.Cell.z - Center.z);

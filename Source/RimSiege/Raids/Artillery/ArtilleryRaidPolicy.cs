@@ -63,15 +63,15 @@ namespace RimSiege.Raids.Artillery
                 personnel = UnityEngine.Mathf.Max(0f, personnel - MechBattery.ConstructoidCombatPower * constructoids);
             }
             List<ArtilleryPlacement> guns = profile.Configure(raidPoints, personnel, parms.faction);
-            if (guns.Count == 0) return null;
+            if (!guns.Any(g => g.IsSupport)) return null;
             IntVec3 goal = GenAI.RandomRaidDest(parms.spawnCenter, map);
             SupportRoute route = SupportRoute.Build(map, parms.spawnCenter, goal);
             if (route == null) return null;
             var siting = route.PlanningTargets();
             if (siting.Targets.Count == 0) return null;
             Dictionary<ArtilleryPlacement, float> ranges = null;
-            if (guns.Any(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo)))
-                ranges = guns.ToDictionary(g => g, g => CeArtillerySight.EffectiveRange(map, parms.faction,
+            if (guns.Any(g => g.IsDirectSupport))
+                ranges = guns.ToDictionary(g => g, g => !g.IsSupport ? 0f : CeArtillerySight.EffectiveRange(map, parms.faction,
                     new EmplacementSpec(g.Def, g.Stuff, g.Ammo, parms.spawnCenter, Rot4.North, null)));
             if (!CampPlanner.TryPlan(map, parms.faction, parms.spawnCenter, goal, guns,
                 Centers(map, parms.spawnCenter, siting, guns, ranges), siting, ranges, out CampPlan camp)) return null;
@@ -82,7 +82,8 @@ namespace RimSiege.Raids.Artillery
                 Phase = ArtilleryPhase.Planned, RaidPoints = raidPoints, PawnPoints = personnel,
                 Faction = parms.faction, Strategy = parms.raidStrategy, OriginalParms = parms,
                 Camp = camp, Rolled = true, Selected = true,
-                ConstructoidCount = constructoids
+                ConstructoidCount = constructoids,
+                ConstructionSpeedMultiplier = profile.ConstructionSpeed(raidPoints)
             };
             SupportRoute.Set(raid, route);
             return raid;
@@ -92,7 +93,7 @@ namespace RimSiege.Raids.Artillery
             List<ArtilleryPlacement> guns, IReadOnlyDictionary<ArtilleryPlacement, float> ranges)
         {
             IntVec3 native = RCellFinder.FindSiegePositionFrom(entry, map);
-            var direct = guns.Where(g => CeArtillerySight.IsDirectFire(g.Def, g.Ammo)).ToList();
+            var direct = guns.Where(g => g.IsDirectSupport).ToList();
             if (direct.Count == 0)
             {
                 yield return native;

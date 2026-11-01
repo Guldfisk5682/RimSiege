@@ -60,6 +60,9 @@
     <defName>RS_ArtilleryMechanoid</defName>
     <kind>Mechanoid</kind>
     <minPoints>2000</minPoints>
+    <constructionSpeedOffset>2</constructionSpeedOffset>
+    <constructionSpeedScale>2</constructionSpeedScale>
+    <constructionSpeedCap>20</constructionSpeedCap>
     <personnelCurve>
       <points>
         <li>(0,0.80)</li>
@@ -71,6 +74,7 @@
     <guns>
       <li>
         <turret>Turret_AutoMiniTurret</turret>
+        <role>CampDefense</role>
         <defaultAmmo>true</defaultAmmo>
         <cost>100</cost><weight>1</weight>
       </li>
