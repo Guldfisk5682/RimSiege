@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LanguageData>
   <RS_EnhancedAssault>Enhanced siege assaults</RS_EnhancedAssault>
-  <RS_EnhancedAssaultDescription>New ordinary raids carry limited ladder kits, recover dropped kits and prefer ladders to breaking walls when no existing route is open. Existing routes and special raid strategies retain their usual behavior.</RS_EnhancedAssaultDescription>
+  <RS_EnhancedAssaultDescription>Raiders carry and recover limited ladder kits. Eligible concentrated raids may deploy a fortified artillery camp, while sappers favor demolition troops. Existing entrances and shared routes remain in use.</RS_EnhancedAssaultDescription>
+  <RS_ArtilleryChance>Artillery support chance: {0}</RS_ArtilleryChance>
   <RS_LadderCarrier>[Ladder carrier]</RS_LadderCarrier>
+  <RS_ArtilleryRaidLabel_Ordinary>Artillery-supported {0}</RS_ArtilleryRaidLabel_Ordinary>
+  <RS_ArtilleryRaidLabel_Breaching>Artillery-supported {0}</RS_ArtilleryRaidLabel_Breaching>
+  <RS_ArtilleryRaidLabel_Siege>Reinforced siege {0}</RS_ArtilleryRaidLabel_Siege>
+  <RS_ArtilleryRaidArrival_Ordinary>This raiding party has artillery support. They will first establish a gun position as fire support, then attack in coordination with the infantry.</RS_ArtilleryRaidArrival_Ordinary>
+  <RS_ArtilleryRaidArrival_Breaching>This breaching force has artillery support. They will first establish a gun position as fire support, then attack in coordination with the infantry.</RS_ArtilleryRaidArrival_Breaching>
+  <RS_ArtilleryRaidLabel_Mechanoid>Mechanoid artillery {0}</RS_ArtilleryRaidLabel_Mechanoid>
+  <RS_ArtilleryRaidArrival_Mechanoid>This mechanoid force has automated turret support. Hostile constructoids will establish a gun battery as fire support, coordinating with the infantry assault.</RS_ArtilleryRaidArrival_Mechanoid>
+  <RS_ArtilleryRaidArrival_Siege>This siege force has stronger artillery than an ordinary raid. They will establish a fortified gun position and sustain a bombardment of your defenders and fortifications in preparation for a breakthrough.</RS_ArtilleryRaidArrival_Siege>
 </LanguageData>

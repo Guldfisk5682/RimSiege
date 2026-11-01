@@ -14,7 +14,7 @@ namespace RimSiege.Combat.Projectiles
             __state = default;
             Map map = __instance.Map;
             if (!IsoFloor.HasFloors(map)) return;
-            __state = FloorPlanes.Find(map, CeAccess.Last(__instance), CeAccess.ProjectilePosition(__instance));
+            __state = FloorPlanes.Find(map, CeAccess.Last(__instance), CeAccess.ProjectilePosition(__instance), PlaneQuery.Contact);
             if (__state.Found)
             {
                 // Check CE's own thing intersections up to the first solid plane.
@@ -29,6 +29,7 @@ namespace RimSiege.Combat.Projectiles
             if (!__state.Found || __result || __instance.Destroyed) return;
             __instance.Position = __state.Cell;
             __instance.landed = true;
+            CeProjectileOrigins.RecordSurface(__instance, __state.Cell, __state.Point, __state.ExplosionCell, __state.FromBelow);
 
             CeAccess.Impact(__instance, null);
             __result = true;

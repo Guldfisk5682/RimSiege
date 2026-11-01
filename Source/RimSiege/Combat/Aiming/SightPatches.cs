@@ -38,6 +38,7 @@ namespace RimSiege.Combat.Aiming
                 codes[firstFine].MoveLabelsFrom(codes[i]).MoveBlocksFrom(codes[i]);
             MethodInfo distance = AccessTools.Method(typeof(IntVec3Utility), nameof(IntVec3Utility.DistanceTo), new[] { typeof(IntVec3), typeof(IntVec3) });
             MethodInfo size = AccessTools.PropertyGetter(typeof(Bounds), nameof(Bounds.size));
+            MethodInfo map = AccessTools.PropertyGetter(typeof(Thing), nameof(Thing.Map));
             FieldInfo[] owner = CeAccess.VerbClosureOwner(__originalMethod.DeclaringType);
             foreach (CodeInstruction c in codes.Skip(firstFine))
             {
@@ -48,6 +49,11 @@ namespace RimSiege.Combat.Aiming
                     foreach (FieldInfo field in owner) yield return new CodeInstruction(OpCodes.Ldfld, field);
                     c.opcode = OpCodes.Call;
                     c.operand = AccessTools.Method(typeof(SightQueries), measuringDistance ? nameof(SightQueries.CoverDistance) : nameof(SightQueries.CoverSize));
+                }
+                else if (c.Calls(map))
+                {
+                    c.opcode = OpCodes.Call;
+                    c.operand = AccessTools.Method(typeof(CeArtillerySight), nameof(CeArtillerySight.MapFor));
                 }
                 yield return c;
             }

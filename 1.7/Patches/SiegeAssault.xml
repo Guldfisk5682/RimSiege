@@ -4,7 +4,7 @@
     <xpath>Defs/DutyDef[defName="AssaultColony"]/thinkNode/subNodes/li[@Class="JobGiver_AIFightEnemies"]</xpath>
     <order>Prepend</order>
     <value>
-      <li Class="RimSiege.Raids.ThinkNode_ConditionalLadderCarrier">
+      <li Class="RimSiege.Raids.ThinkNode_ConditionalLadderDuty">
         <subNodes>
           <li Class="RimSiege.Raids.JobGiver_SiegeApproach" />
         </subNodes>

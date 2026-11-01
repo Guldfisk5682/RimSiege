@@ -12,7 +12,7 @@ namespace RimSiege.Combat.Aiming
         private static void Postfix(Verb_LaunchProjectileCE __instance, ref float __result)
         {
             Thing caster = __instance.Caster;
-            Map map = caster?.Map;
+            Map map = CeArtillerySight.MapFor(caster);
             if (map == null || !IsoFloor.HasFloors(map))
                 return;
 
@@ -30,7 +30,7 @@ namespace RimSiege.Combat.Aiming
     {
         private static void Postfix(Verb_LaunchProjectileCE __instance, LocalTargetInfo target, ref float __result)
         {
-            Map map = __instance.Caster?.Map;
+            Map map = CeArtillerySight.MapFor(__instance.Caster);
             if (map == null || !IsoFloor.HasFloors(map))
                 return;
 

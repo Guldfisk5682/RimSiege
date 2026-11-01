@@ -5,6 +5,7 @@ using System.Reflection.Emit;
 using CombatExtended;
 using HarmonyLib;
 using RimSiege.Combat.Geometry;
+using RimSiege.Combat.Aiming;
 using RimSiege.Integration;
 using UnityEngine;
 using Verse;
@@ -18,8 +19,9 @@ namespace RimSiege.Combat.Projectiles
 
         public static Vector3 LocalPosition(ProjectileCE projectile)
         {
-            Vector3 point = CeAccess.ProjectilePosition(projectile);
-            if (IsoFloor.HasFloors(projectile.Map)) point.y -= CombatHeights.Base(projectile.Position, projectile.Map);
+            Vector3 point = ExplosionFireCompatibility.DetonationPosition(projectile);
+            IntVec3 cell = CeProjectileOrigins.SurfaceOf(projectile)?.ExplosionCell ?? projectile.Position;
+            if (IsoFloor.HasFloors(projectile.Map)) point.y -= CombatHeights.Base(cell, projectile.Map);
             return point;
         }
 
@@ -30,7 +32,8 @@ namespace RimSiege.Combat.Projectiles
             if (IsoFloor.HasFloors(map) && component.parent is ProjectileCE projectile)
             {
                 position = FloorCoordinates.Ground(position, map);
-                position = FloorCoordinates.OnBand(position, projectile.Position, map);
+                IntVec3 cell = CeProjectileOrigins.SurfaceOf(projectile)?.ExplosionCell ?? projectile.Position;
+                position = FloorCoordinates.OnBand(position, cell, map);
             }
             return CeAccess.Fragments(position, map, height, instigator, fragment, speed, shadowChance,
                 elevation, rotation, minimumCollisionDistance, canTargetSelf);

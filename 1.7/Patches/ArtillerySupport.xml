@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+  <Operation Class="PatchOperationInsert">
+    <xpath>Defs/DutyDef[defName="AssaultColony"]/thinkNode/subNodes/li[@Class="JobGiver_AITrashColonyClose"]</xpath>
+    <order>Prepend</order>
+    <value><li Class="RimSiege.Raids.Artillery.JobGiver_ArtilleryDemolition" /></value>
+  </Operation>
+  <Operation Class="PatchOperationInsert">
+    <xpath>Defs/DutyDef[defName="Breaching"]/thinkNode/subNodes/li[@Class="JobGiver_AIBreaching"]</xpath>
+    <order>Prepend</order>
+    <value><li Class="RimSiege.Raids.Artillery.JobGiver_ArtilleryDemolition" /></value>
+  </Operation>
+</Patch>

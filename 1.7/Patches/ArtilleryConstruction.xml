@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+  <Operation Class="PatchOperationInsert">
+    <xpath>Defs/DutyDef[defName="Build"]/thinkNode/subNodes/li[@Class="ThinkNode_ForbidOutsideFlagRadius"]/subNodes/li[@Class="JobGiver_Work"]</xpath>
+    <order>Prepend</order>
+    <value>
+      <li Class="RimSiege.Raids.Artillery.JobGiver_ArtilleryConstruction" />
+    </value>
+  </Operation>
+</Patch>

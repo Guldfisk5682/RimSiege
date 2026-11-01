@@ -7,8 +7,10 @@ namespace RimSiege.Integration
 {
     internal static class IsoSiegeLadders
     {
-        // The player's emergency ladders and mechanical lifts keep their native rules.
-        internal static bool Is(Thing thing) => thing is Building_SiegeLadder && thing.def == PZDefOf.PZ_SiegeLadder;
+        // Both raider links share the combat interface; their native link kinds,
+        // visuals and stats remain distinct. Player emergency ladders stay native.
+        internal static bool Is(Thing thing) => thing is Building_SiegeLadder &&
+            (thing.def == PZDefOf.PZ_SiegeLadder || thing.def == PZDefOf.PZ_SiegeLift);
 
         internal static bool Ends(Thing thing, out IntVec3 foot, out IntVec3 top)
         {
