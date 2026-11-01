@@ -6,7 +6,7 @@
     <RootNamespace>RimSiege</RootNamespace>
     <AssemblyName>RimSiege</AssemblyName>
     <ImplicitUsings>disable</ImplicitUsings>
-    <OutputPath>../../1.7/Assemblies/</OutputPath>
+    <OutputPath>../../Assemblies/</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GenerateDependencyFile>false</GenerateDependencyFile>
     <DebugType>embedded</DebugType>

@@ -32,8 +32,9 @@ namespace RimSiege.Combat.Geometry
 
         private static Vector3 Center(Vector3 point, Thing thing)
         {
-            if (!IsoFloor.HasFloors(thing.Map)) return point;
-            point = Ground(point, thing.Position, thing.Map);
+            Map map = CeArtillerySight.MapFor(thing);
+            if (!IsoFloor.HasFloors(map)) return point;
+            point = Ground(point, thing.Position, map);
             if (SiegeLadderGeometry.TryGet(thing, out SiegeLadderShape ladder))
             {
                 point.x = ladder.Bounds.center.x;
@@ -65,8 +66,8 @@ namespace RimSiege.Combat.Geometry
             return ground;
         }
 
-        public static IntVec3 GroundPosition(Thing thing) => IsoFloor.HasFloors(thing.Map)
-            ? IsoFloor.GroundCellOf(thing.Position, thing.Map) : thing.Position;
+        public static IntVec3 GroundPosition(Thing thing) => IsoFloor.HasFloors(CeArtillerySight.MapFor(thing))
+            ? IsoFloor.GroundCellOf(thing.Position, CeArtillerySight.MapFor(thing)) : thing.Position;
 
         internal static IntVec3 WorldCell(Vector3 point, Map map)
         {

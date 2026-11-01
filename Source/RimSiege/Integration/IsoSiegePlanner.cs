@@ -3,12 +3,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using ProjectZ;
 using ProjectZ.Patches;
 using RimWorld;
 using Verse;
 using Verse.AI;
+using Verse.AI.Group;
 
 namespace RimSiege.Integration
 {
@@ -25,8 +27,10 @@ namespace RimSiege.Integration
         private readonly Func<int> epoch;
         private RouteGraph main;
         private int synchronizedEpoch = -1;
-        private bool checkingRoute, floorOnly, firstComponent;
-        private IntVec3 destination;
+        private bool checkingRoute, selectingTarget;
+        private IntVec3 reachableTarget;
+        private delegate Thing TargetPicker(Pawn pawn, Lord lord, RouteGraph graph, int startComp, ClimbPlans plans, out bool anyReachable);
+        private static readonly TargetPicker PickTarget = AccessTools.MethodDelegate<TargetPicker>(AccessTools.Method(typeof(RaidClimb), "PickTarget"));
 
         internal IsoSiegePlanner(Map map, Func<int> epoch)
         {
@@ -56,16 +60,30 @@ namespace RimSiege.Integration
         {
             Synchronize(pawn);
             IsoSiegePlanner previous = Active;
-            checkingRoute = firstComponent = true;
-            floorOnly = withoutClimbing;
-            destination = IntVec3.Invalid;
             Active = this;
             try
             {
-                RaidDegrade.RealRaidDest(pawn.Position, Map);
-                return destination;
+                IntVec3 destination = pawn.mindState?.duty != null ? pawn.mindState.duty.focus.Cell : IntVec3.Invalid;
+                if (!destination.IsValid)
+                {
+                    Lord lord = pawn.GetLord();
+                    int startComp = ClimbPlanner.CompAt(Graph, pawn.Position, Map);
+                    if (lord == null || startComp == int.MinValue) return IntVec3.Invalid;
+                    reachableTarget = IntVec3.Invalid;
+                    selectingTarget = true;
+                    Thing target = PickTarget(pawn, lord, Graph, startComp, Plans, out bool anyReachable);
+                    selectingTarget = false;
+                    destination = anyReachable ? reachableTarget : target?.Position ?? IntVec3.Invalid;
+                }
+                if (!destination.IsValid) return IntVec3.Invalid;
+                checkingRoute = true;
+                TraverseParms traversal = TraverseParms.For(pawn);
+                bool reached = withoutClimbing
+                    ? main.FloorReach(pawn.Position, destination, PathEndMode.Touch, traversal)
+                    : Map.reachability.CanReach(pawn.Position, destination, PathEndMode.Touch, traversal);
+                return reached ? destination : IntVec3.Invalid;
             }
-            finally { checkingRoute = false; Active = previous; }
+            finally { selectingTarget = checkingRoute = false; Active = previous; }
         }
 
         internal Job JobFor(Pawn pawn)
@@ -130,29 +148,30 @@ namespace RimSiege.Integration
             }
         }
 
-        [HarmonyPatch(typeof(ClimbPlanner), nameof(ClimbPlanner.CompAt))]
-        private static class DestinationBinding
+        [HarmonyPatch(typeof(RaidClimb), "PickTarget")]
+        private static class ReachableTargetBinding
         {
-            private static bool Prefix(IntVec3 c, ref int __result)
+            private static int Component(RouteGraph graph, IntVec3 cell, Map map, int startComp)
             {
-                if (Active == null || !Active.checkingRoute) return true;
-                // RealRaidDest owns target enumeration and filters. For this
-                // probe its component equality is answered by native reachability,
-                // recording the same first destination it accepts.
-                if (Active.firstComponent)
+                int component = ClimbPlanner.CompAt(graph, cell, map);
+                // Iso returns only a flag when it finds a reachable target.
+                if (Active != null && Active.selectingTarget && Active.Graph == graph && Active.Map == map && component == startComp)
+                    Active.reachableTarget = cell;
+                return component;
+            }
+
+            private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                MethodInfo compAt = AccessTools.Method(typeof(ClimbPlanner), nameof(ClimbPlanner.CompAt));
+                foreach (CodeInstruction instruction in instructions)
                 {
-                    Active.firstComponent = false;
-                    __result = 1;
-                    return false;
+                    if (instruction.Calls(compAt))
+                    {
+                        yield return new CodeInstruction(OpCodes.Ldarg_3).MoveLabelsFrom(instruction).MoveBlocksFrom(instruction);
+                        instruction.operand = AccessTools.Method(typeof(ReachableTargetBinding), nameof(Component));
+                    }
+                    yield return instruction;
                 }
-                Pawn pawn = Active.Traveller;
-                TraverseParms traversal = TraverseParms.For(pawn);
-                bool reached = Active.floorOnly
-                    ? Active.main.FloorReach(pawn.Position, c, PathEndMode.Touch, traversal)
-                    : Active.Map.reachability.CanReach(pawn.Position, c, PathEndMode.Touch, traversal);
-                __result = reached ? 1 : 0;
-                if (reached) Active.destination = c;
-                return false;
             }
         }
 

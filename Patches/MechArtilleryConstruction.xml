@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+  <!-- Steel construction costs and work match the corresponding CE player
+       mini-turret, autocannon and mortar. No player build menu is added. -->
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Turret_AutoMiniTurret"]</xpath>
+    <value>
+      <costList><Steel>100</Steel><ComponentIndustrial>5</ComponentIndustrial></costList>
+    </value>
+  </Operation>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Turret_AutoMiniTurret"]/statBases</xpath>
+    <value><WorkToBuild>6000</WorkToBuild></value>
+  </Operation>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Turret_AutoInferno" or defName="Turret_AutoChargeBlaster"]</xpath>
+    <value>
+      <costList><Steel>425</Steel><Plasteel>40</Plasteel><ComponentIndustrial>9</ComponentIndustrial></costList>
+    </value>
+  </Operation>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Turret_AutoInferno" or defName="Turret_AutoChargeBlaster"]/statBases</xpath>
+    <value><WorkToBuild>35000</WorkToBuild></value>
+  </Operation>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Turret_AutoMortar"]</xpath>
+    <value>
+      <costList><Steel>225</Steel><ComponentIndustrial>6</ComponentIndustrial></costList>
+      <costListForDifficulty>
+        <difficultyVar>classicMortars</difficultyVar>
+        <invert>true</invert>
+        <costList><Steel>50</Steel><ComponentIndustrial>6</ComponentIndustrial><ReinforcedBarrel>1</ReinforcedBarrel></costList>
+      </costListForDifficulty>
+    </value>
+  </Operation>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Turret_AutoMortar"]/statBases</xpath>
+    <value><WorkToBuild>9000</WorkToBuild></value>
+  </Operation>
+  <Operation Class="PatchOperationConditional">
+    <xpath>Defs/ThingDef[(defName="Turret_AutoMiniTurret" or defName="Turret_AutoInferno" or defName="Turret_AutoChargeBlaster" or defName="Turret_AutoMortar") and not(modExtensions)]</xpath>
+    <match Class="PatchOperationAdd">
+      <xpath>Defs/ThingDef[(defName="Turret_AutoMiniTurret" or defName="Turret_AutoInferno" or defName="Turret_AutoChargeBlaster" or defName="Turret_AutoMortar") and not(modExtensions)]</xpath>
+      <value><modExtensions /></value>
+    </match>
+  </Operation>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Turret_AutoMiniTurret" or defName="Turret_AutoInferno" or defName="Turret_AutoChargeBlaster" or defName="Turret_AutoMortar"]/modExtensions</xpath>
+    <value><li Class="RimSiege.Integration.SiegeConstructionExtension" /></value>
+  </Operation>
+</Patch>
