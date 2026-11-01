@@ -21,20 +21,20 @@ namespace RimSiege.Raids
         public List<Pawn> Operators = new List<Pawn>();
         internal IsoSiegePlanner Planner;
         private readonly Dictionary<Pawn, PlanStatus> jobs = new Dictionary<Pawn, PlanStatus>();
-        private struct PlanStatus { internal int tick, version; internal bool available; }
+        private struct PlanStatus { internal int tick, version; internal bool available, placing; }
 
-        internal Job Plan(Pawn pawn)
+        internal Job Plan(Pawn pawn, bool placing = true)
         {
             int now = Find.TickManager.TicksGame, version = Planner.Version;
-            if (jobs.TryGetValue(pawn, out PlanStatus cached) && cached.version == version && now - cached.tick < RaidClimb.MemoTicks && !cached.available)
+            if (jobs.TryGetValue(pawn, out PlanStatus cached) && cached.placing == placing && cached.version == version && now - cached.tick < RaidClimb.MemoTicks && !cached.available)
                 return null;
-            Job job = Planner.JobFor(pawn);
-            jobs[pawn] = new PlanStatus { tick = now, version = version, available = job != null };
+            Job job = Planner.JobFor(pawn, placing);
+            jobs[pawn] = new PlanStatus { tick = now, version = version, available = job != null, placing = placing };
             return job;
         }
 
         internal bool CanPlan(Pawn pawn) => jobs.TryGetValue(pawn, out PlanStatus status) &&
-            status.version == Planner.Version && Find.TickManager.TicksGame - status.tick < RaidClimb.MemoTicks
+            status.placing && status.version == Planner.Version && Find.TickManager.TicksGame - status.tick < RaidClimb.MemoTicks
                 ? status.available : Plan(pawn) != null;
 
         public void ExposeData()
@@ -68,7 +68,7 @@ namespace RimSiege.Raids
 
         private void Index(SiegeParty party)
         {
-            party.Planner = new IsoSiegePlanner(map, () => ReachEpoch);
+            party.Planner = new IsoSiegePlanner(map, () => ReachEpoch, LadderTopClearance.Allows);
             foreach (Pawn pawn in party.Members)
                 if (pawn != null) membership[pawn] = party;
         }
