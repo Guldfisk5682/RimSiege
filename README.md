@@ -28,4 +28,4 @@ These raid enhancements can be disabled in the mod settings, so you can also use
 
 ## License
 
-MIT License.
+[MIT License](LICENSE).

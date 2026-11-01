@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ModMetaData>
-  <name>3Dsiege</name>
-  <author>Fisk Guld</author>
+  <name>RimSiege</name>
+  <author>Guldfisk5682</author>
   <packageId>Guld.ThreeDSiege</packageId>
   <supportedVersions>
     <li>1.7</li>
@@ -18,6 +18,11 @@
       <steamWorkshopUrl>steam://url/CommunityFilePage/2890901044</steamWorkshopUrl>
     </li>
     <li>
+      <packageId>CETeam.CombatExtendedArmory</packageId>
+      <displayName>Combat Extended Armory</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2911110083</steamWorkshopUrl>
+    </li>
+    <li>
       <packageId>Peren.IsoRim17</packageId>
       <displayName>IsoRim Waylith</displayName>
       <steamWorkshopUrl>steam://url/CommunityFilePage/3819577715</steamWorkshopUrl>
@@ -31,8 +36,11 @@
   <loadAfter>
     <li>brrainz.harmony</li>
     <li>CETeam.CombatExtended</li>
+    <li>CETeam.CombatExtendedArmory</li>
     <li>Peren.IsoRim17</li>
     <li>Peren.IsoRimProjectZ</li>
   </loadAfter>
-  <description>Combat Extended compatibility for IsoRim Waylith and IsoRimZ.</description>
+  <description>RimSiege is a RimWorld mod built on IsoRimZ. It brings Combat Extended combat across floors to 3D RimWorld and adds optional artillery-supported raids and siege ladder mechanics.
+
+For RimWorld 1.7 Unstable. Early in development; bug reports, issues, and pull requests are welcome.</description>
 </ModMetaData>

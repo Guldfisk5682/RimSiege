@@ -1,9 +1,8 @@
-Assemblies/
+/Assemblies/
 **/bin/
 **/obj/
 *.user
 *.dll
 *.pdb
 .vs/
-/1.7/Assemblies/
 /.local/

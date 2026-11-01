@@ -15,10 +15,10 @@ namespace RimSiege
             Harmony harmony = new Harmony("Guld.ThreeDSiege");
             harmony.PatchAll(typeof(RimSiegeMod).Assembly);
             IsoBeamCombat.Patch(harmony);
-            Log.Message("[3Dsiege] Combat Extended / IsoRim patches loaded.");
+            Log.Message("[RimSiege] Combat Extended / IsoRim patches loaded.");
         }
 
-        public override string SettingsCategory() => "3Dsiege";
+        public override string SettingsCategory() => "RimSiege";
 
         public override void DoSettingsWindowContents(Rect inRect)
         {

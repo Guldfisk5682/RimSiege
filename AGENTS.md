@@ -7,7 +7,7 @@ RimSiege is a 3D RimWorld siege mod built on IsoRim Waylith and IsoRimZ (Project
 - Combat Extended (CE) compatibility for cross-floor combat: coordinates, line of fire, trajectories, collision, explosions, fire, fragments, suppression, and shields.
 - Siege mechanics extending vanilla, IsoRimZ, and CE behavior: ladder carriers and recovery, enhanced assaults, artillery support, and fortified gun positions.
 
-The workspace and installed mod may still use the historical name `3Dsiege`. Production code is under `Source/RimSiege`, and the current package ID is `Guld.ThreeDSiege`. Verify behavior against the checked-out branch, actual dependency assemblies, and installed mod combination.
+The display name is `RimSiege`, and the author is `Guldfisk5682`. The workspace and installed mod may still use the historical name `3Dsiege`. Production code is under `Source/RimSiege`, and the package ID remains `Guld.ThreeDSiege` for existing save references. Native mod settings use the installation folder name and mod class; preserve an existing installation's folder name during upgrades. Verify behavior against the checked-out branch, actual dependency assemblies, and installed mod combination.
 
 ## Long-lived branches
 
@@ -66,13 +66,14 @@ Source/RimSiege/
                          and raid lifecycle integration
     Artillery/           Profiles, breach targets, camp planning, deployment,
                          supplies, operators, and artillery lifecycle
-1.7/
-  Defs/                  Items and gameplay configuration, including ladder kits
+Defs/                    Items and gameplay configuration, including ladder kits
                          and artillery profiles
-  Patches/               XML extensions to vanilla definitions and think trees
-  Languages/             Localized settings, item descriptions, raid notifications
-  Assemblies/            Ignored build output
+Patches/                 XML extensions to vanilla definitions and think trees
+Languages/               Localized settings, item descriptions, raid notifications
+Assemblies/              Ignored build output; only distributable RimSiege DLLs
 About/                   Mod metadata, dependencies, and load order
+LoadFolders.xml          Version-specific selection of the root content folder
+LICENSE                  MIT license
 .local/                  Ignored experiments, specs, probes, evidence, and archives
 ```
 
@@ -107,6 +108,10 @@ dotnet build Source/RimSiege/RimSiege.csproj -c Release -p:RimWorldDir="/path/to
 ```
 
 Run relevant compilation, XML syntax, and diff checks. A successful build establishes static validity, not runtime regression coverage or gameplay correctness.
+
+Release builds write `Assemblies/RimSiege.dll` at the repository root. `LoadFolders.xml` loads that root for RimWorld 1.7. Keep shared definitions, XML patches, and translations in the root `Defs`, `Patches`, and `Languages` directories. Introduce version subdirectories only when supported game versions actually need different content.
+
+The required mods are Harmony, Combat Extended, Combat Extended Armory, IsoRim Waylith, and IsoRimZ. Keep `About/About.xml` and the README consistent. Release packages contain runtime content, mod metadata, the README, and the license; exclude source/build intermediates, dependency assemblies, and all experimental probes or `.local` content. Build the published rendering combination from the synchronized and game-validated rendering branch.
 
 Before deployment, verify the target installation, loaded mod combination, source revision, and DLL SHA256. If the running game locks a DLL, finish the reviewable build first, then coordinate one exit with the human tester and verify hashes after replacement. Do not force-kill the game or overwrite saves. Keep experimental probes separate from production assemblies and out of release packages.
 
