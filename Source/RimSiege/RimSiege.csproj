@@ -17,6 +17,7 @@
     <CombatExtendedPath Condition="'$(CombatExtendedPath)' == ''">$(WorkshopDir)/2890901044/Assemblies/CombatExtended.dll</CombatExtendedPath>
     <IsoRimPath Condition="'$(IsoRimPath)' == ''">$(WorkshopDir)/3819577715/1.7/Assemblies/IsoRim.dll</IsoRimPath>
     <ProjectZPath Condition="'$(ProjectZPath)' == ''">$(WorkshopDir)/3824503834/1.7/Assemblies/IsoRimProjectZ.dll</ProjectZPath>
+    <CEPackPath Condition="'$(CEPackPath)' == ''">$(RimWorldDir)/Mods/IsoRimWaylith-CEPack/1.7/IsoRimZ/Assemblies/IsoRimWaylith_CEPackZ.dll</CEPackPath>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Assembly-CSharp" HintPath="$(RimWorldDir)/Assembly-CSharp.dll" Private="false" />
@@ -26,5 +27,6 @@
     <Reference Include="CombatExtended" HintPath="$(CombatExtendedPath)" Private="false" />
     <Reference Include="IsoRim" HintPath="$(IsoRimPath)" Private="false" />
     <Reference Include="IsoRimProjectZ" HintPath="$(ProjectZPath)" Private="false" />
+    <Reference Include="IsoRimWaylith_CEPackZ" HintPath="$(CEPackPath)" Private="false" />
   </ItemGroup>
 </Project>

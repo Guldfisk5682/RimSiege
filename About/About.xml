@@ -2,8 +2,8 @@
 <ModMetaData>
   <name>RimSiege</name>
   <author>Guldfisk5682</author>
-  <packageId>Guld.ThreeDSiege</packageId>
-  <modVersion>0.3.0</modVersion>
+  <packageId>Guldfisk.RimSiege</packageId>
+  <modVersion>0.4.0</modVersion>
   <supportedVersions>
     <li>1.7</li>
   </supportedVersions>
@@ -33,6 +33,11 @@
       <displayName>IsoRimZ</displayName>
       <steamWorkshopUrl>steam://url/CommunityFilePage/3824503834</steamWorkshopUrl>
     </li>
+    <li>
+      <packageId>Peren.IsoRimWaylith.CEPack</packageId>
+      <displayName>IsoRim Waylith - Combat Extended Pack</displayName>
+      <downloadUrl>https://github.com/peren717/IsoRimWaylith-CEPack</downloadUrl>
+    </li>
   </modDependencies>
   <loadAfter>
     <li>brrainz.harmony</li>
@@ -40,6 +45,7 @@
     <li>CETeam.CombatExtendedArmory</li>
     <li>Peren.IsoRim17</li>
     <li>Peren.IsoRimProjectZ</li>
+    <li>Peren.IsoRimWaylith.CEPack</li>
   </loadAfter>
   <description>RimSiege is a RimWorld mod built on IsoRimZ. It brings Combat Extended combat across floors to 3D RimWorld and adds optional artillery-supported raids and siege ladder mechanics.
 

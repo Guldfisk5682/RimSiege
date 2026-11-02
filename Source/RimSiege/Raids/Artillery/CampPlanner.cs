@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using RimSiege.Integration;
-using RimSiege.Combat.Aiming;
+using IsoRimCEPackZ;
 using UnityEngine;
 using RimWorld;
 using Verse;
