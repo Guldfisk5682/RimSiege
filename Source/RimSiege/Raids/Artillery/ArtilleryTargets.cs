@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CombatExtended;
-using RimSiege.Combat.Aiming;
+using IsoRimCEPackZ;
 using RimSiege.Integration;
 using RimWorld;
 using UnityEngine;
@@ -88,77 +88,105 @@ namespace RimSiege.Raids.Artillery
 
         // Deployment proves geometry only; actual CE shot eligibility is checked by firing guns.
         internal ArtilleryTargetResult FindGeometry(Faction faction, EmplacementSpec placement, float? effectiveRange = null,
-            List<Thing> deploymentTargets = null, float reserve = 0f) =>
-            CeArtillerySight.WithGun(Map, faction, placement,
-                gun => Search(gun, false, effectiveRange, wallsOnly: false, deploymentTargets, reserve));
-
-        internal ArtilleryTargetResult Find(Building_TurretGunCE gun) => Search(gun, true, null, wallsOnly: false);
-
-        internal ArtilleryTargetResult FindWalls(Building_TurretGunCE gun) => Search(gun, true, null, wallsOnly: true);
-
-        // At most two representative wall segments per piece and layout round.
-        // This does not invoke CE's full CanHitTargetFrom construction gate.
-        internal FixedCorridorResult CheckFixedCorridor(Faction faction, EmplacementSpec placement, float? effectiveRange,
-            List<Thing> deploymentTargets = null, float reserve = 0f) =>
-            CeArtillerySight.WithGun(Map, faction, placement, gun =>
-            {
-                float range = effectiveRange ?? ((Verb_LaunchProjectileCE)gun.AttackVerb).EffectiveRange;
-                foreach (List<Thing> group in deploymentTargets == null ? new[] { Walls, Fallback } : new[] { deploymentTargets })
-                {
-                    var ranked = Order(group.Where(t => Filter(gun, t, range, !shapes.ContainsKey(t), reserve) == ArtilleryTargetReason.GeometryPassed)
-                        .Select(t => Rank(gun.Position, t))).ToList();
-                    if (ranked.Count == 0) continue;
-                    Thing first = ranked[0].Thing;
-                    FixedCorridorResult firstResult = FixedShotCorridor.Trace(gun, first);
-                    if (firstResult.Clear) return firstResult;
-                    Thing second = ranked.Skip(1).Select(c => c.Thing).FirstOrDefault(t =>
-                        (t.Position - first.Position).LengthHorizontalSquared >= 16);
-                    if (second != null)
-                    {
-                        FixedCorridorResult secondResult = FixedShotCorridor.Trace(gun, second);
-                        if (secondResult.Clear) return secondResult;
-                    }
-                    return firstResult;
-                }
-                return new FixedCorridorResult(FixedObstruction.Unavailable, IntVec3.Invalid);
-            });
-
-        private ArtilleryTargetResult Search(Building_TurretGunCE gun, bool precise, float? effectiveRange, bool wallsOnly,
             List<Thing> deploymentTargets = null, float reserve = 0f)
         {
+            if (CeArtillerySight.Open(Map, faction, placement, out var query) != GeometryStatus.Success)
+                return new(LocalTargetInfo.Invalid, ArtilleryTargetReason.UnavailableWeapon, false, false);
+            using (query)
+            {
+                if (query.ReadWeapon(out var weapon) != GeometryStatus.Success)
+                    return new(LocalTargetInfo.Invalid, ArtilleryTargetReason.UnavailableWeapon, false, false);
+                ArtilleryTargetReason reason = ArtilleryTargetReason.NoCandidates;
+                foreach (List<Thing> group in deploymentTargets == null ? new[] { Walls, Fallback } : new[] { deploymentTargets })
+                    foreach (Thing target in group)
+                    {
+                        reason = FilterCandidate(query, faction, placement, weapon, target,
+                            !shapes.ContainsKey(target), effectiveRange ?? weapon.EffectiveRange, reserve);
+                        if (reason == ArtilleryTargetReason.GeometryPassed) return new(target, reason, false, false);
+                    }
+                return new(LocalTargetInfo.Invalid, reason, false, false);
+            }
+        }
+
+        internal ArtilleryTargetResult Find(Building_TurretGunCE gun) => Search(gun, wallsOnly: false);
+        internal ArtilleryTargetResult FindWalls(Building_TurretGunCE gun) => Search(gun, wallsOnly: true);
+
+        // Keep the same two representative segments and candidate lifetime; CEPack owns the fixed geometry trace.
+        internal FixedCorridorResult CheckFixedCorridor(Faction faction, EmplacementSpec placement, float? effectiveRange,
+            List<Thing> deploymentTargets = null, float reserve = 0f)
+        {
+            if (CeArtillerySight.Open(Map, faction, placement, out var query) != GeometryStatus.Success)
+                return new(FixedObstruction.Unavailable, IntVec3.Invalid, default);
+            using (query)
+            {
+                if (query.ReadWeapon(out var weapon) != GeometryStatus.Success)
+                    return new(FixedObstruction.Unavailable, IntVec3.Invalid, default);
+                float range = effectiveRange ?? weapon.EffectiveRange;
+                foreach (List<Thing> group in deploymentTargets == null ? new[] { Walls, Fallback } : new[] { deploymentTargets })
+                {
+                    var ranked = Order(group.Where(t => FilterCandidate(query, faction, placement, weapon, t,
+                        !shapes.ContainsKey(t), range, reserve) == ArtilleryTargetReason.GeometryPassed)
+                        .Select(t => Rank(placement.Cell, t))).ToList();
+                    if (ranked.Count == 0) continue;
+                    Thing first = ranked[0].Thing;
+                    if (query.TraceFixedCorridor(first, out var result) != GeometryStatus.Success)
+                        return new(FixedObstruction.Unavailable, IntVec3.Invalid, default);
+                    if (result.Clear) return result;
+                    Thing second = ranked.Skip(1).Select(c => c.Thing).FirstOrDefault(t =>
+                        (t.Position - first.Position).LengthHorizontalSquared >= 16);
+                    if (second != null && query.TraceFixedCorridor(second, out var other) == GeometryStatus.Success && other.Clear)
+                        return other;
+                    return result;
+                }
+                return new(FixedObstruction.Unavailable, IntVec3.Invalid, default);
+            }
+        }
+
+        private ArtilleryTargetReason FilterCandidate(IPlacementQuery query, Faction faction, EmplacementSpec placement,
+            WeaponGeometry weapon, Thing target, bool fallback, float range, float reserve)
+        {
+            if (!Valid(target) || !(placement.Operator?.Faction ?? faction).HostileTo(target.Faction))
+                return ArtilleryTargetReason.InvalidTarget;
+            if (query.CheckRangeAndArc(target, out var geometry) != GeometryStatus.Success)
+                return ArtilleryTargetReason.UnavailableWeapon;
+            if (geometry.MaximumRangeDistance > range) return ArtilleryTargetReason.OutsideRange;
+            if (reserve > 0f && geometry.MaximumRangeDistance > range - reserve) return ArtilleryTargetReason.InsufficientDeploymentReserve;
+            float minimum = geometry.MinimumRange;
+            if (weapon.MinimumRangeInCover >= 0f) minimum = Math.Min(minimum, weapon.MinimumRangeInCover);
+            if (geometry.MinimumRangeDistance + Math.Max(target.def.Size.x, target.def.Size.z) + 2f < minimum)
+                return ArtilleryTargetReason.BelowMinimumRange;
+            if (!geometry.WithinArc) return ArtilleryTargetReason.OutsideArc;
+            if (fallback && (geometry.ThreatDisabled || target is Pawn pawn &&
+                (weapon.Mannable && pawn.RaceProps.Animal || !weapon.Mannable && GenAI.MachinesLike(faction, pawn)) ||
+                weapon.Incendiary && target.IsBurning())) return ArtilleryTargetReason.DisabledThreat;
+            return ArtilleryTargetReason.GeometryPassed;
+        }
+
+        private ArtilleryTargetResult Search(Building_TurretGunCE gun, bool wallsOnly)
+        {
             if (gun.AttackVerb is not Verb_LaunchProjectileCE verb)
-                return new ArtilleryTargetResult(LocalTargetInfo.Invalid, ArtilleryTargetReason.UnavailableWeapon, false, false);
-            float range = effectiveRange ?? verb.EffectiveRange;
+                return new(LocalTargetInfo.Invalid, ArtilleryTargetReason.UnavailableWeapon, false, false);
             Pawn operatorPawn = CeArtillerySight.OperatorFor(gun);
             ArtilleryTargetReason reason = ArtilleryTargetReason.NoCandidates;
             bool ceRejected = false;
-            List<Thing>[] groups = deploymentTargets != null ? new[] { deploymentTargets }
-                : wallsOnly ? new[] { Walls } : new[] { Walls, Fallback };
-            foreach (List<Thing> group in groups)
+            foreach (List<Thing> group in wallsOnly ? new[] { Walls } : new[] { Walls, Fallback })
             {
                 var eligible = new List<Ranked>();
                 foreach (Thing target in group)
                 {
-                    bool fallback = deploymentTargets != null ? !shapes.ContainsKey(target) : !wallsOnly && group == Fallback;
-                    ArtilleryTargetReason rejected = Filter(gun, target, range, fallback, reserve);
-                    if (rejected != ArtilleryTargetReason.GeometryPassed) { reason = rejected; continue; }
-                    // Search only asks whether an inexpensive candidate exists; no ray or sort is needed yet.
-                    if (!precise)
-                        return new ArtilleryTargetResult(target, ArtilleryTargetReason.GeometryPassed, false, false);
-                    eligible.Add(Rank(gun.Position, target));
+                    reason = Filter(gun, target, verb.EffectiveRange, !wallsOnly && group == Fallback);
+                    if (reason == ArtilleryTargetReason.GeometryPassed) eligible.Add(Rank(gun.Position, target));
                 }
                 foreach (Ranked candidate in Order(eligible))
                 {
-                    // Preserve virtual dispatch, including CE weapon subclasses' operator checks.
                     if (verb.CanHitTargetFrom(gun.Position, candidate.Thing))
-                        return new ArtilleryTargetResult(candidate.Thing,
-                            ArtilleryTargetReason.Accepted, true, operatorPawn != null);
+                        return new(candidate.Thing, ArtilleryTargetReason.Accepted, true, operatorPawn != null);
                     reason = ArtilleryTargetReason.CeRejected;
                     ceRejected = true;
                 }
             }
-            return new ArtilleryTargetResult(LocalTargetInfo.Invalid,
-                ceRejected ? ArtilleryTargetReason.CeRejected : reason, ceRejected, ceRejected && operatorPawn != null);
+            return new(LocalTargetInfo.Invalid, ceRejected ? ArtilleryTargetReason.CeRejected : reason,
+                ceRejected, ceRejected && operatorPawn != null);
         }
 
         private static IOrderedEnumerable<Ranked> Order(IEnumerable<Ranked> candidates) => candidates.OrderBy(c => c.Band)
