@@ -11,8 +11,11 @@ Currently targets **RimWorld 1.7 Unstable**. RimSiege is in early development; b
 - [Combat Extended Armory](https://github.com/CombatExtended-Continued/CombatExtendedArmory)
 - [IsoRim Waylith](https://github.com/peren717/IsoRim-1.7), required by IsoRimZ
 - [IsoRimZ](https://github.com/peren717/IsoRim-ProjectZ)
+- [IsoRim Waylith - Combat Extended Pack](https://github.com/peren717/IsoRimWaylith-CEPack), with extension API 1
 
 Load RimSiege after these mods.
+
+This migration branch uses CEPack for CE combat geometry and rendering. The previous standalone CE adaptation is preserved under `legacy/` and is excluded from the build.
 
 ## Cross-floor Combat Extended
 

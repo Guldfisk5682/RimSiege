@@ -48,4 +48,19 @@ namespace RimSiege.Combat.Aiming
             return false;
         }
     }
+
+    // ProjectZ's native decision honours requireLineOfSight=false on lances.
+    // Keep RimSiege's sight policy after that decision without introducing a projectile or interception.
+    [HarmonyPatch(typeof(Verb), "CanHitCellFromCellIgnoringRange")]
+    internal static class PsychicLanceFloorSightPatch
+    {
+        [HarmonyPriority(int.MinValue)]
+        private static void Postfix(Verb __instance, IntVec3 __0, IntVec3 __1, ref bool __result)
+        {
+            if (__instance is not Verb_CastTargetEffectLances || !__result) return;
+            Map map = __instance.Caster.Map;
+            if (IsoFloor.HasFloors(map) && !IsoFloor.SameFloor(__0, __1, map))
+                __result = ProjectZ.Api.CanSeeBetweenFloors(__0, __1, map);
+        }
+    }
 }
