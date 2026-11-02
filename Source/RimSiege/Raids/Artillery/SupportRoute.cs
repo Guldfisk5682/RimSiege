@@ -31,7 +31,7 @@ namespace RimSiege.Raids.Artillery
         {
             SupportRoute route = For(raid);
             if (route == null) return Restore(map, raid);
-            if (raid.Kind != ArtilleryRaidKind.Breaching) return route;
+            if (!raid.Breaches) return route;
             var data = BreachingUtility.LordDataFor(raid.AssaultLord);
             RouteSegmentSnapshot actual = VanillaBreachRoutes.Snapshot(data?.breachingGrid);
             if (data != null && data.breachDest.IsValid && data.breachDest != route.Goal) return Restore(map, raid);

@@ -17,34 +17,33 @@ namespace RimSiege.Raids.Artillery
                 !(parms.target is Map map) || parms.faction == null || !parms.faction.HostileTo(Faction.OfPlayer))
                 return null;
 
-            if (parms.faction == Faction.OfMechanoids)
-                return PrepareMechanoid(parms, raidPoints, pawnPoints, map);
-
-            if (!parms.faction.def.humanlikeFaction ||
-                parms.faction.def.techLevel < TechLevel.Industrial ||
-                parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn || !parms.spawnCenter.IsValid ||
+            // One concentrated arrival can share a camp. Grouped/distributed modes
+            // remain native until each group can own a separately budgeted battery.
+            if ((parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn &&
+                 parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeDrop) || !parms.spawnCenter.IsValid ||
                 parms.attackTargets?.Count > 0 || parms.controllerPawn?.Faction == Faction.OfPlayer ||
                 // Explicit grouping may omit pawns: vanilla puts unlabelled
                 // members in group -1. Decline before reducing the pawn budget.
                 (parms.pawnGroups?.Count ?? 0) > 0) return null;
 
-            string kind;
-            if (parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackBreaching) kind = "Breaching";
-            else if (parms.raidStrategy.Worker is RaidStrategyWorker_Siege) kind = "Siege";
-            else if (parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttack ||
-                parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart) kind = "Ordinary";
-            else return null;
-            return BuildRaid(parms, raidPoints, pawnPoints, map, kind);
-        }
+            RaidStrategyWorker worker = parms.raidStrategy.Worker;
+            // This worker spawns a mech cluster and never creates a normal raid lord.
+            // It inherits Siege, so exclude it before classifying ordinary strategies.
+            if (worker is RaidStrategyWorker_SiegeMechanoid) return null;
 
-        private static ArtilleryRaid PrepareMechanoid(IncidentParms parms, float raidPoints, float pawnPoints, Map map)
-        {
-            if (!ModsConfig.BiotechActive || parms.raidStrategy?.Worker is not RaidStrategyWorker_StageThenAttack) return null;
-            if (parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn &&
-                parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeDrop) return null;
-            if (!parms.spawnCenter.IsValid || parms.attackTargets?.Count > 0 ||
-                (parms.pawnGroups?.Count ?? 0) > 0) return null;
-            return BuildRaid(parms, raidPoints, pawnPoints, map, "Mechanoid");
+            string kind;
+            if (parms.faction == Faction.OfMechanoids)
+            {
+                if (!ModsConfig.BiotechActive) return null;
+                kind = "Mechanoid";
+            }
+            else
+            {
+                if (!parms.faction.def.humanlikeFaction || parms.faction.def.techLevel < TechLevel.Industrial) return null;
+                kind = worker is RaidStrategyWorker_ImmediateAttackBreaching ? "Breaching"
+                    : worker is RaidStrategyWorker_Siege ? "Siege" : "Ordinary";
+            }
+            return BuildRaid(parms, raidPoints, pawnPoints, map, kind);
         }
 
         private static ArtilleryRaid BuildRaid(IncidentParms parms, float raidPoints, float pawnPoints, Map map,

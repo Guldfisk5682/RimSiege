@@ -21,6 +21,7 @@ namespace RimSiege.Raids.Artillery
         internal float ConstructionSpeedMultiplier = 1f;
         internal Faction Faction;
         internal RaidStrategyDef Strategy;
+        internal bool Breaches => Strategy?.Worker is RaidStrategyWorker_ImmediateAttackBreaching;
         internal IncidentParms OriginalParms;
         internal List<Pawn> Members = new List<Pawn>();
         internal CampPlan Camp;
