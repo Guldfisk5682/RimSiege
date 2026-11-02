@@ -20,8 +20,9 @@ namespace RimSiege.Raids.Artillery
         private static string ArrivalText(RaidStrategyDef strategy, IncidentParms parms)
         {
             ArtilleryRaid raid = CurrentRaid(parms);
-            return raid == null ? strategy.arrivalTextEnemy :
-                ("RS_ArtilleryRaidArrival_" + raid.Kind).Translate().Resolve();
+            if (raid == null) return strategy.arrivalTextEnemy;
+            string support = ("RS_ArtilleryRaidArrival_" + raid.Kind).Translate().Resolve();
+            return raid.IndependentCrew ? strategy.arrivalTextEnemy + "\n\n" + support : support;
         }
 
         [HarmonyPatch(typeof(IncidentWorker_RaidEnemy), "GetLetterLabel")]

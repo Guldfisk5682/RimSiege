@@ -30,10 +30,10 @@ namespace RimSiege.Raids.Artillery
                 Lord lord = LordMaker.MakeNewLord(raid.Faction, MakeOriginalJob(raid, map, pawns), map, pawns);
                 lord.inSignalLeave = raid.OriginalParms.inSignalEnd;
                 QuestUtility.AddQuestTag(lord, raid.OriginalParms.questTag);
-                if (lord.LordJob is LordJob_StageThenAttack)
+                if ((!raid.IndependentCrew || raid.AssaultCreated) && lord.LordJob is LordJob_StageThenAttack)
                 {
-                    // The camp already supplied the preparation phase. Execute the
-                    // original transition (including its message/wake actions),
+                    // Legacy camps and replacements for an ended first wave have
+                    // already prepared. Execute the original transition and actions,
                     // without changing graph order or its saved toil indices.
                     lord.Graph.transitions.First(t => t.sources.Contains(lord.CurLordToil) &&
                         t.target is LordToil_AssaultColony).Execute(lord);

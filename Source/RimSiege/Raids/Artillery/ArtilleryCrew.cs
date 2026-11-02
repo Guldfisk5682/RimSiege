@@ -13,17 +13,25 @@ namespace RimSiege.Raids.Artillery
         internal static bool Pending(ArtilleryPlacement gun) => gun.Building == null &&
             (gun.Frame?.Spawned == true || gun.Blueprint?.Spawned == true);
 
-        internal static bool HasConstruction(ArtilleryRaid raid) => raid.Camp.Guns.Any(Pending);
+        internal static bool HasConstruction(ArtilleryRaid raid) => ArtilleryCamp.Placements(raid.Camp).Any(Pending);
         internal static bool HasSupportConstruction(ArtilleryRaid raid) => raid.Camp.Guns.Any(g => g.IsSupport && Pending(g));
         internal static bool SupportReady(ArtilleryRaid raid) => raid.Camp.Guns.Any(g => g.IsSupport) &&
             raid.Camp.Guns.Where(g => g.IsSupport).All(g => g.Building?.Spawned == true);
 
-        internal static bool CanBuild(LordToil_Siege toil, Pawn pawn) => pawn.Spawned && !pawn.Dead &&
+        internal static bool BuilderCandidate(LordToil_Siege toil, Pawn pawn) => !pawn.Dead &&
             !pawn.Downed && !pawn.InMentalState && pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation) &&
             NativeSiege.CanBuild(toil, pawn);
 
+        internal static bool CanBuild(LordToil_Siege toil, Pawn pawn) => pawn.Spawned && BuilderCandidate(toil, pawn);
+
         internal static bool HasBuilder(Lord camp) => camp.CurLordToil is LordToil_Siege toil &&
             camp.ownedPawns.Any(p => CanBuild(toil, p));
+
+        internal static bool HasArrivingBuilder(ArtilleryRaid raid, Lord camp)
+        {
+            var toil = camp.Graph.lordToils.OfType<LordToil_Siege>().Single();
+            return raid.IndependentCrew && camp.ownedPawns.Any(p => !p.Spawned && BuilderCandidate(toil, p));
+        }
 
         internal static HashSet<Pawn> Retained(ArtilleryRaid raid, Lord camp)
         {
@@ -58,7 +66,7 @@ namespace RimSiege.Raids.Artillery
         internal static void Update(ArtilleryRaid raid, Lord camp)
         {
             if (!raid.InfantryReleased) return;
-            if (HasConstruction(raid) && !HasBuilder(camp))
+            if (HasConstruction(raid) && !HasBuilder(camp) && !HasArrivingBuilder(raid, camp))
             {
                 ArtilleryCamp.CancelUnfinished(raid);
                 ArtilleryCamp.RefreshConstruction(raid, camp.Map);

@@ -73,7 +73,8 @@ namespace RimSiege.Raids.Artillery
                 ranges = guns.ToDictionary(g => g, g => !g.IsSupport ? 0f : CeArtillerySight.EffectiveRange(map, parms.faction,
                     new EmplacementSpec(g.Def, g.Stuff, g.Ammo, parms.spawnCenter, Rot4.North, null)));
             if (!CampPlanner.TryPlan(map, parms.faction, parms.spawnCenter, goal, guns,
-                Centers(map, parms.spawnCenter, siting, guns, ranges), siting, ranges, out CampPlan camp)) return null;
+                Centers(map, parms.spawnCenter, siting, guns, ranges), siting, ranges, out CampPlan camp,
+                fortified: kind == "Siege")) return null;
 
             var raid = new ArtilleryRaid
             {
@@ -81,6 +82,7 @@ namespace RimSiege.Raids.Artillery
                 Phase = ArtilleryPhase.Planned, RaidPoints = raidPoints, PawnPoints = personnel,
                 Faction = parms.faction, Strategy = parms.raidStrategy, OriginalParms = parms,
                 Camp = camp, Rolled = true, Selected = true,
+                IndependentCrew = kind != "Siege",
                 ConstructoidCount = constructoids,
                 ConstructionSpeedMultiplier = profile.ConstructionSpeed(raidPoints)
             };

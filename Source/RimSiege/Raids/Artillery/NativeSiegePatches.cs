@@ -114,6 +114,7 @@ namespace RimSiege.Raids.Artillery
             ArtilleryRaid raid = Raid(toil);
             if (raid != null)
             {
+                if (memo == "NoBuilders" && ArtilleryCrew.HasArrivingBuilder(raid, lord)) return;
                 if (memo == "NoArtillery" && raid.Camp.Guns.Any(g => g.IsSupport && g.Building != null && g.Building.Spawned &&
                     g.Building.Faction == raid.Faction)) return;
                 if (memo == "NoBuilders" && raid.Camp.Guns.Any(g => g.IsSupport &&

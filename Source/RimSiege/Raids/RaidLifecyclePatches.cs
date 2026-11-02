@@ -37,6 +37,7 @@ namespace RimSiege.Raids
             {
                 SiegeParty party = map.GetComponent<SiegeRaidMap>().Register(Current.Pawns, parms.faction);
                 if (Current.Artillery != null && party != null) Current.Artillery.Id = party.Id;
+                if (Current.Artillery != null) ArtilleryDeployment.Begin(Current.Artillery);
             }
         }
 
@@ -94,6 +95,7 @@ namespace RimSiege.Raids
             SiegeRaidMap raids = map.GetComponent<SiegeRaidMap>();
             SiegeParty party = raids.Party(__instance);
             if (SiegeRaidMap.Enabled && party != null) raids.Issue(__instance, party);
+            ArtilleryDeployment.PawnArrived(__instance, map);
         }
     }
 

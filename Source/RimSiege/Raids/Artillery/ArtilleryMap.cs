@@ -89,6 +89,9 @@ namespace RimSiege.Raids.Artillery
         {
             if (raid.AssaultEnded) return;
             raid.AssaultEnded = true;
+            // A completed first wave does not cancel independent construction or
+            // manning. Crew retain their own native retreat/non-hostility paths.
+            if (raid.IndependentCrew) return;
             Lord camp = raid.CampLord;
             if (camp != null && map.lordManager.lords.Contains(camp)) camp.ReceiveMemo("ArtilleryRaidEnded");
             else ArtilleryCamp.Abandon(raid, map);
@@ -157,6 +160,7 @@ namespace RimSiege.Raids.Artillery
                     (raid.AssaultLord == null || !map.lordManager.lords.Contains(raid.AssaultLord) ||
                      raid.AssaultLord.CurLordToil is LordToil_ExitMap || raid.AssaultLord.CurLordToil is LordToil_PanicFlee))
                     NotifyAssaultEnded(raid);
+                ArtilleryDeployment.TryDeploy(raid);
                 FinishIfEnded(raid);
             }
         }

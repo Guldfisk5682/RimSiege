@@ -17,12 +17,12 @@ namespace RimSiege.Raids.Artillery
         internal LordJob_MechArtillery(ArtilleryRaid raid) : base(raid) { }
 
         internal override bool RequiresOperators => false;
-        internal override Pawn ConstructionWorker => lord.ownedPawns.FirstOrDefault(CanConstruct);
+        internal override Pawn ConstructionWorker => lord.ownedPawns.FirstOrDefault(p => p.Spawned && CanConstruct(p));
         internal override bool PrepareCrew() => ConstructionWorker != null;
         internal override bool CanBeBuilder(Pawn pawn, bool nativeResult) => CanConstruct(pawn);
 
         private static bool CanConstruct(Pawn pawn) => MechBattery.IsConstructoid(pawn) &&
-            pawn.Spawned && !pawn.Dead && !pawn.Downed && !pawn.InMentalState &&
+            !pawn.Dead && !pawn.Downed && !pawn.InMentalState &&
             pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation);
 
         internal override bool AssignBuilder(LordToil_Siege toil, Pawn pawn)

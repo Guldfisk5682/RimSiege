@@ -27,6 +27,7 @@ namespace RimSiege.Raids.Artillery
         internal CampPlan Camp;
         internal bool Rolled, Selected, SuppliesDelivered;
         internal bool InfantryReleased, AssaultCreated, AssaultEnded, CompletionSent, CompletionPending;
+        internal bool IndependentCrew;
         internal int ConstructoidCount;
         internal List<string> CompletionTags = new List<string>();
         internal Lord CampLord, AssaultLord;
@@ -52,6 +53,7 @@ namespace RimSiege.Raids.Artillery
             Scribe_Values.Look(ref Selected, "selected");
             Scribe_Values.Look(ref SuppliesDelivered, "suppliesDelivered");
             Scribe_Values.Look(ref InfantryReleased, "infantryReleased");
+            Scribe_Values.Look(ref IndependentCrew, "independentCrew");
             Scribe_Values.Look(ref AssaultCreated, "assaultCreated");
             Scribe_Values.Look(ref AssaultEnded, "assaultEnded");
             Scribe_Values.Look(ref CompletionSent, "completionSent");
