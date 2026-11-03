@@ -13,7 +13,7 @@ namespace RimSiege.Integration
     internal static class CeArtillerySight
     {
         internal static GeometryStatus Open(Map map, Faction faction, EmplacementSpec placement, out IPlacementQuery query) =>
-            Api.OpenPlacement(new(map, placement.Def, placement.Stuff, placement.Ammo, placement.Cell,
+            CePackIntegration.OpenPlacement(new(map, placement.Def, placement.Stuff, placement.Ammo, placement.Cell,
                 placement.Rotation, faction, placement.Operator), out query);
 
         internal static float EffectiveRange(Map map, Faction faction, EmplacementSpec placement)
