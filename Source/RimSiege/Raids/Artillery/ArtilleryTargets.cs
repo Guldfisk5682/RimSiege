@@ -33,6 +33,19 @@ namespace RimSiege.Raids.Artillery
     // Membership is rebuilt on demand; it is not a continuously maintained map index.
     internal sealed class ArtilleryTargets
     {
+        // A wave-wide, short-lived enumeration; each camp still owns its route/ranking.
+        internal sealed class Catalog
+        {
+            internal readonly List<Building> Buildings;
+            internal readonly HashSet<Building> Combat;
+            internal readonly List<Pawn> Pawns;
+            internal Catalog(Map map)
+            {
+                Buildings = map.listerBuildings.allBuildingsColonist.ToList();
+                Combat = new(map.listerBuildings.allBuildingsColonistCombatTargets);
+                Pawns = map.mapPawns.AllPawnsSpawned.Where(p => p.Faction == Faction.OfPlayer && !p.Dead).ToList();
+            }
+        }
         internal const int SearchInterval = 25;
         internal readonly Map Map;
         internal readonly IntVec3 Goal;
@@ -44,18 +57,18 @@ namespace RimSiege.Raids.Artillery
         private readonly record struct WallShape(bool Door, bool Corner, bool Horizontal, bool Vertical, bool OnRoute);
         private readonly record struct Ranked(Thing Thing, int Band, WallShape Shape, float Normal, float Distance);
 
-        internal ArtilleryTargets(Map map, IntVec3 goal, SupportRoute route)
+        internal ArtilleryTargets(Map map, IntVec3 goal, SupportRoute route, Catalog catalog = null)
         {
             Map = map; Goal = goal; floors = IsoFloor.HasFloors(map);
-            var combat = new HashSet<Building>(map.listerBuildings.allBuildingsColonistCombatTargets);
-            foreach (Building building in map.listerBuildings.allBuildingsColonist)
+            catalog ??= new Catalog(map);
+            foreach (Building building in catalog.Buildings)
             {
                 if (!Valid(building)) continue;
                 if ((building.def.IsWall || building.def.IsDoor) && BreachingUtility.ShouldBreachBuilding(building))
                     Walls.Add(building);
-                else if (combat.Contains(building)) Fallback.Add(building);
+                else if (catalog.Combat.Contains(building)) Fallback.Add(building);
             }
-            foreach (Pawn pawn in map.mapPawns.AllPawnsSpawned)
+            foreach (Pawn pawn in catalog.Pawns)
                 if (pawn.Faction == Faction.OfPlayer && !pawn.Dead) Fallback.Add(pawn);
 
             var cells = new HashSet<IntVec3>(Walls.SelectMany(t => t.OccupiedRect()));

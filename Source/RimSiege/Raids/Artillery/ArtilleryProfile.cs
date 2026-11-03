@@ -31,11 +31,11 @@ namespace RimSiege.Raids.Artillery
         internal bool BelowGate(float raidPoints) =>
             raidPoints < minPoints || (totalPieces != null && totalPieces.Evaluate(raidPoints) < 1f);
 
-        internal List<ArtilleryPlacement> Configure(float raidPoints, float pawnPoints, Faction faction)
+        internal List<ArtilleryPlacement> Configure(float raidPoints, float pawnPoints, Faction faction, out float share)
         {
             var result = new List<ArtilleryPlacement>();
             var used = new Dictionary<ArtilleryGunRule, int>();
-            float share = budgetShare.max > 0f || budgetShare.min > 0f
+            share = budgetShare.max > 0f || budgetShare.min > 0f
                 ? budgetShare.RandomInRange : equipmentFraction;
             float remaining = pawnPoints * share;
             int limit = totalPieces == null ? int.MaxValue : Mathf.FloorToInt(totalPieces.Evaluate(raidPoints));

@@ -13,19 +13,27 @@ namespace RimSiege.Raids.Artillery
     {
         internal static IEnumerable<ArtilleryPlacement> Placements(CampPlan camp) => camp.Guns.Concat(camp.Cover);
 
-        private static bool CanOperate(Pawn pawn) => pawn.Spawned && !pawn.Dead && !pawn.Downed && !pawn.InMentalState &&
+        internal static bool OperatorCandidate(Pawn pawn) => !pawn.Dead && !pawn.Downed && !pawn.InMentalState &&
             pawn.RaceProps.Humanlike && !pawn.WorkTagIsDisabled(WorkTags.Violent) &&
             pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation) && LadderInventory.Get(pawn) == null &&
             pawn.CurJobDef != JobDefOf.ManTurret && !SiegeRoles.HasDemolitionWeapon(pawn);
 
+        private static bool CanOperate(Pawn pawn) => pawn.Spawned && OperatorCandidate(pawn);
+
         internal static bool AssignOperators(ArtilleryRaid raid, Lord lord)
         {
-            var available = lord.ownedPawns.Where(CanOperate).ToList();
+            return ReserveOperators(raid, lord.ownedPawns.Where(p =>
+                raid.IndependentCrew ? OperatorCandidate(p) : CanOperate(p)));
+        }
+
+        internal static bool ReserveOperators(ArtilleryRaid raid, IEnumerable<Pawn> candidates)
+        {
+            var available = candidates.ToList();
             for (int i = 0; i < raid.Camp.Guns.Count; i++)
             {
                 ArtilleryPlacement gun = raid.Camp.Guns[i];
                 if (!gun.NeedsOperator) continue;
-                Pawn pawn = available.OrderBy(p => p.Position.DistanceToSquared(gun.Cell)).FirstOrDefault();
+                Pawn pawn = available.OrderBy(p => p.PositionHeld.DistanceToSquared(gun.Cell)).FirstOrDefault();
                 if (pawn == null)
                 {
                     raid.Camp.Guns.RemoveRange(i, raid.Camp.Guns.Count - i);
@@ -40,7 +48,16 @@ namespace RimSiege.Raids.Artillery
         internal static bool Prepare(ArtilleryRaid raid, Lord lord)
         {
             Map map = lord.Map;
-            SupportRoute route = SupportRoute.Restore(map, raid);
+            SupportRoute route;
+            if (raid.IndependentCrew && !raid.SuppliesDelivered)
+            {
+                // The initial plan predates pod landing. Do not require the main
+                // force or every reserved operator to be spawned to deploy it.
+                var toil = (LordToil_Siege)lord.CurLordToil;
+                Pawn traveller = lord.ownedPawns.First(p => ArtilleryCrew.CanBuild(toil, p));
+                route = SupportRoute.For(raid) ?? SupportRoute.Build(map, traveller.Position, raid.Camp.Goal, traveller);
+            }
+            else route = SupportRoute.Restore(map, raid);
             if (route == null) return false;
             if (!((LordJob_Artillery)lord.LordJob).PrepareCrew()) return false;
             return CampPlanner.Revalidate(map, raid, raid.Camp, route.PlanningTargets(raid.Camp.BreachAnchor));
@@ -147,8 +164,9 @@ namespace RimSiege.Raids.Artillery
 
         internal static void TransferToAssault(ArtilleryRaid raid, Lord camp, List<Pawn> pawns)
         {
-            if (pawns.Count == 0 || raid.AssaultEnded) return;
+            if (pawns.Count == 0 || (raid.AssaultEnded && !raid.IndependentCrew)) return;
             if (raid.AssaultLord != null && !camp.Map.lordManager.lords.Contains(raid.AssaultLord)) raid.AssaultLord = null;
+            if (raid.AssaultLord == null && raid.IndependentCrew) raid.AssaultEnded = false;
             camp.RemovePawns(pawns);
             foreach (Pawn pawn in pawns)
                 // Work-giver construction/hauling jobs may have no job.lord.
@@ -191,8 +209,11 @@ namespace RimSiege.Raids.Artillery
                 if (!gun.NeedsOperator) continue;
                 Pawn pawn = gun.Operator;
                 bool liveSite = gun.Building?.Spawned == true && gun.Building.Faction == raid.Faction || ArtilleryCrew.Pending(gun);
+                bool arriving = raid.IndependentCrew && pawn != null && !pawn.Spawned && !pawn.Dead &&
+                    !pawn.Downed && pawn.GetLord() == camp;
                 if (!liveSite ||
-                    pawn == null || !camp.ownedPawns.Contains(pawn) || !pawn.Spawned || pawn.Map != camp.Map ||
+                    pawn == null || !camp.ownedPawns.Contains(pawn) || !pawn.Spawned && !arriving ||
+                    pawn.Spawned && pawn.Map != camp.Map ||
                     pawn.Faction != raid.Faction || pawn.Dead || pawn.Downed || pawn.InMentalState ||
                     !pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation))
                 {
@@ -223,7 +244,7 @@ namespace RimSiege.Raids.Artillery
         internal static void ReassignOperators(ArtilleryRaid raid, Lord camp, Pawn excluded = null)
         {
             if (!((LordJob_Artillery)camp.LordJob).RequiresOperators) return;
-            if (raid.AssaultEnded || camp.CurLordToil is not LordToil_Siege toil) return;
+            if ((raid.AssaultEnded && !raid.IndependentCrew) || camp.CurLordToil is not LordToil_Siege toil) return;
             Lord assault = raid.AssaultLord;
             if (assault != null && !camp.Map.lordManager.lords.Contains(assault)) assault = null;
             foreach (ArtilleryPlacement gun in raid.Camp.Guns)
@@ -233,7 +254,8 @@ namespace RimSiege.Raids.Artillery
                     : gun.Frame?.Spawned == true ? gun.Frame : gun.Blueprint?.Spawned == true ? gun.Blueprint : null;
                 if (site == null) continue;
                 PathEndMode end = site is Blueprint or Frame ? PathEndMode.Touch : PathEndMode.InteractionCell;
-                Pawn pawn = raid.Members.Where(p => p != null && p != excluded && (p.GetLord() == camp || p.GetLord() == assault && assault != null) &&
+                Pawn pawn = raid.Members.Where(p => p != null && p != excluded && (p.GetLord() == camp ||
+                        !raid.IndependentCrew && p.GetLord() == assault && assault != null) &&
                         p.Map == camp.Map && p.Faction == raid.Faction && CanOperate(p) &&
                         !raid.Camp.Guns.Any(g => g.Operator == p) &&
                         p.CanReserveAndReach(site, end, Danger.Deadly))

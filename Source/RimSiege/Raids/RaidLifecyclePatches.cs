@@ -18,7 +18,14 @@ namespace RimSiege.Raids
     [HarmonyPatch(typeof(IncidentWorker_Raid), "TryExecuteWorker")]
     internal static class RaidSpawnPatch
     {
-        internal sealed class Spawn { internal List<Pawn> Pawns; internal ArtilleryRaid Artillery; }
+        internal sealed class Spawn
+        {
+            internal List<Pawn> Pawns;
+            internal ArtilleryRaid Artillery;
+            internal GroupedArtillery Grouped;
+            internal float NativePawnPoints;
+            internal readonly List<Pawn> InjectedConstructoids = new();
+        }
         [ThreadStatic] internal static Spawn Current;
 
         private static void Prefix(out Spawn __state)
@@ -30,13 +37,26 @@ namespace RimSiege.Raids
         private static void Postfix(IncidentParms parms, bool __result)
         {
             if (!__result || Current?.Pawns == null || parms.target is not Map map) return;
+            Current.Grouped?.CompleteSetup(map);
             if (Current.Artillery != null || parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttack ||
                 parms.raidStrategy.Worker is RaidStrategyWorker_ImmediateAttackSmart ||
                 parms.raidStrategy.Worker is RaidStrategyWorker_StageThenAttack ||
                 Current.Pawns.Exists(p => SiegeRoles.Ordinary(p.GetLord())))
             {
                 SiegeParty party = map.GetComponent<SiegeRaidMap>().Register(Current.Pawns, parms.faction);
-                if (Current.Artillery != null && party != null) Current.Artillery.Id = party.Id;
+                if (Current.Grouped != null)
+                {
+                    foreach (ArtilleryRaid raid in Current.Grouped.Batteries)
+                    {
+                        if (party != null) raid.Id = party.Id;
+                        ArtilleryDeployment.Begin(raid);
+                    }
+                }
+                else if (Current.Artillery != null)
+                {
+                    if (party != null) Current.Artillery.Id = party.Id;
+                    ArtilleryDeployment.Begin(Current.Artillery);
+                }
             }
         }
 
@@ -52,6 +72,7 @@ namespace RimSiege.Raids
             IncidentParms parms)
         {
             MechBattery.InjectConstructoids(RaidSpawnPatch.Current?.Artillery, pawns);
+            if (RaidSpawnPatch.Current != null) RaidSpawnPatch.Current.Pawns = pawns;
             worker.Arrive(pawns, parms);
         }
 
@@ -94,6 +115,7 @@ namespace RimSiege.Raids
             SiegeRaidMap raids = map.GetComponent<SiegeRaidMap>();
             SiegeParty party = raids.Party(__instance);
             if (SiegeRaidMap.Enabled && party != null) raids.Issue(__instance, party);
+            ArtilleryDeployment.PawnArrived(__instance, map);
         }
     }
 

@@ -70,16 +70,16 @@ namespace RimSiege.Raids.Artillery
 
             // Native cover consists of open L segments, not a closed wall.
             // Its convex envelope bounds the battery without treating it as a
-            // collision barrier or inventing additional cover blueprints.
+            // collision barrier. Unfortified support uses the bounded work area.
             var coverCells = new HashSet<IntVec3>(cover.SelectMany(p => GenAdj.OccupiedRect(p.Cell, p.Rotation, p.Def.Size)));
-            List<IntVec2> hull = Hull(coverCells);
+            List<IntVec2> hull = coverCells.Count == 0 ? null : Hull(coverCells);
             bool floors = IsoFloor.HasFloors(map);
             int floor = floors ? IsoFloor.FloorOf(center, map) : 0;
             CellRect area = CellRect.CenteredOn(center, CampPlanner.GunAreaRadius);
             area.ClipInsideMap(map);
             foreach (IntVec3 cell in area)
             {
-                if (floors && IsoFloor.FloorOf(cell, map) != floor || !ContainsCell(hull, cell)) continue;
+                if (floors && IsoFloor.FloorOf(cell, map) != floor || hull != null && !ContainsCell(hull, cell)) continue;
                 interior.Add(cell);
                 if (!terrain.TryGetValue(cell, out bool clear))
                     terrain[cell] = clear = cell.Walkable(map) && !cell.Roofed(map);
@@ -126,7 +126,7 @@ namespace RimSiege.Raids.Artillery
                 }
             }
             // Support occupies the front/rear rows first; camp defense uses
-            // the rear flanks of the same native cover enclosure.
+            // the rear flanks of the same work area.
             // Physical separation and work/supply reservations are checked later.
             float lateral = count <= 1 ? 0f : Mathf.Lerp(-BatteryHalfWidth, BatteryHalfWidth, ordinal / (float)(count - 1));
             Vector2 desired = template.IsSupport

@@ -31,7 +31,7 @@ namespace RimSiege.Raids.Artillery
         {
             SupportRoute route = For(raid);
             if (route == null) return Restore(map, raid);
-            if (raid.Kind != ArtilleryRaidKind.Breaching) return route;
+            if (!raid.Breaches) return route;
             var data = BreachingUtility.LordDataFor(raid.AssaultLord);
             RouteSegmentSnapshot actual = VanillaBreachRoutes.Snapshot(data?.breachingGrid);
             if (data != null && data.breachDest.IsValid && data.breachDest != route.Goal) return Restore(map, raid);
@@ -116,8 +116,8 @@ namespace RimSiege.Raids.Artillery
                     yield return target;
         }
 
-        internal CampSiting PlanningTargets(IntVec3? breachAnchor = null) =>
-            new CampSiting(new ArtilleryTargets(Map, Goal, this), this, breachAnchor);
+        internal CampSiting PlanningTargets(IntVec3? breachAnchor = null, ArtilleryTargets.Catalog catalog = null) =>
+            new CampSiting(new ArtilleryTargets(Map, Goal, this, catalog), this, breachAnchor);
     }
 
 }

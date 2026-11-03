@@ -15,17 +15,20 @@ namespace RimSiege.Raids.Artillery
     internal sealed class ArtilleryRaid : IExposable
     {
         internal int Id, Key, RaidSeed;
+        internal int IncidentKey;
         internal ArtilleryRaidKind Kind;
         internal ArtilleryPhase Phase;
         internal float RaidPoints, PawnPoints;
         internal float ConstructionSpeedMultiplier = 1f;
         internal Faction Faction;
         internal RaidStrategyDef Strategy;
+        internal bool Breaches => Strategy?.Worker is RaidStrategyWorker_ImmediateAttackBreaching;
         internal IncidentParms OriginalParms;
         internal List<Pawn> Members = new List<Pawn>();
         internal CampPlan Camp;
         internal bool Rolled, Selected, SuppliesDelivered;
         internal bool InfantryReleased, AssaultCreated, AssaultEnded, CompletionSent, CompletionPending;
+        internal bool IndependentCrew;
         internal int ConstructoidCount;
         internal List<string> CompletionTags = new List<string>();
         internal Lord CampLord, AssaultLord;
@@ -36,6 +39,7 @@ namespace RimSiege.Raids.Artillery
         {
             Scribe_Values.Look(ref Id, "id");
             Scribe_Values.Look(ref Key, "key");
+            Scribe_Values.Look(ref IncidentKey, "incidentKey");
             Scribe_Values.Look(ref RaidSeed, "raidSeed");
             Scribe_Values.Look(ref Kind, "kind");
             Scribe_Values.Look(ref Phase, "phase");
@@ -51,6 +55,7 @@ namespace RimSiege.Raids.Artillery
             Scribe_Values.Look(ref Selected, "selected");
             Scribe_Values.Look(ref SuppliesDelivered, "suppliesDelivered");
             Scribe_Values.Look(ref InfantryReleased, "infantryReleased");
+            Scribe_Values.Look(ref IndependentCrew, "independentCrew");
             Scribe_Values.Look(ref AssaultCreated, "assaultCreated");
             Scribe_Values.Look(ref AssaultEnded, "assaultEnded");
             Scribe_Values.Look(ref CompletionSent, "completionSent");

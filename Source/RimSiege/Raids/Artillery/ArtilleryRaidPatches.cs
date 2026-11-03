@@ -30,6 +30,14 @@ namespace RimSiege.Raids.Artillery
                 Lord lord = LordMaker.MakeNewLord(raid.Faction, MakeOriginalJob(raid, map, pawns), map, pawns);
                 lord.inSignalLeave = raid.OriginalParms.inSignalEnd;
                 QuestUtility.AddQuestTag(lord, raid.OriginalParms.questTag);
+                if ((!raid.IndependentCrew || raid.AssaultCreated) && lord.LordJob is LordJob_StageThenAttack)
+                {
+                    // Legacy camps and replacements for an ended first wave have
+                    // already prepared. Execute the original transition and actions,
+                    // without changing graph order or its saved toil indices.
+                    lord.Graph.transitions.First(t => t.sources.Contains(lord.CurLordToil) &&
+                        t.target is LordToil_AssaultColony).Execute(lord);
+                }
                 return lord;
             }
             finally { creatingAssault = previous; assaultMap = previousMap; }
@@ -37,9 +45,9 @@ namespace RimSiege.Raids.Artillery
 
         internal static LordJob MakeOriginalJob(ArtilleryRaid raid, Map map, List<Pawn> pawns)
         {
-            // Mechanoid support uses StageThenAttack for arrival; after the battery is built
-            // transfer must assault immediately, not restage.
-            if (raid.Kind == ArtilleryRaidKind.Siege || raid.Kind == ArtilleryRaidKind.Mechanoid)
+            // A siege's camp has already been built. Other original workers retain
+            // their native smart/sapper/breacher flags, regardless of battery faction.
+            if (raid.Strategy.Worker is RaidStrategyWorker_Siege)
                 return new LordJob_AssaultColony(raid.Faction);
             bool previous = restoring;
             restoring = true;
@@ -57,6 +65,7 @@ namespace RimSiege.Raids.Artillery
         {
             float adjusted = IncidentWorker_Raid.AdjustedRaidPoints(points, arrival, strategy, faction, group, target, age);
             if (RaidSpawnPatch.Current == null) return adjusted;
+            RaidSpawnPatch.Current.NativePawnPoints = adjusted;
             ArtilleryRaid raid = ArtilleryRaidPolicy.Prepare(parms, points, adjusted);
             RaidSpawnPatch.Current.Artillery = raid;
             return raid?.PawnPoints ?? adjusted;
@@ -83,7 +92,7 @@ namespace RimSiege.Raids.Artillery
         {
             private static bool Prefix(Map map, ref IntVec3 __result)
             {
-                if (creatingAssault?.Kind != ArtilleryRaidKind.Breaching || map != assaultMap ||
+                if (creatingAssault?.Breaches != true || map != assaultMap ||
                     !creatingAssault.Camp.Goal.InBounds(map)) return true;
                 __result = creatingAssault.Camp.Goal;
                 return false;
@@ -95,11 +104,23 @@ namespace RimSiege.Raids.Artillery
         {
             private static IEnumerable<MethodBase> TargetMethods() => CeAccess.Methods(typeof(RaidStrategyWorker), "MakeLordJob");
 
-            private static bool Prefix(IncidentParms parms, Map map, List<Pawn> pawns, int raidSeed, ref LordJob __result)
+            private static bool Prefix(ref IncidentParms parms, Map map, List<Pawn> pawns, int raidSeed, ref LordJob __result)
             {
-                ArtilleryRaid raid = RaidSpawnPatch.Current?.Artillery;
-                if (restoring || raid == null || raid.OriginalParms != parms || raid.CampLord != null ||
-                    pawns.Count != RaidSpawnPatch.Current.Pawns.Count) return true;
+                if (restoring) return true;
+                RaidSpawnPatch.Spawn spawn = RaidSpawnPatch.Current;
+                ArtilleryRaid raid;
+                if (spawn?.Grouped != null)
+                {
+                    raid = spawn.Grouped.ForRoster(pawns, out IncidentParms groupParms);
+                    if (groupParms != null) parms = groupParms;
+                    if (raid == null) return true;
+                }
+                else
+                {
+                    raid = spawn?.Artillery;
+                    if (raid == null || raid.OriginalParms != parms || pawns.Count != spawn.Pawns.Count) return true;
+                }
+                if (raid.CampLord != null) return true;
                 raid.RaidSeed = raidSeed;
                 map.GetComponent<ArtilleryMap>().Register(raid, pawns);
                 __result = raid.Kind == ArtilleryRaidKind.Mechanoid
@@ -116,7 +137,7 @@ namespace RimSiege.Raids.Artillery
             private static List<List<Pawn>> Split(List<Pawn> pawns, Dictionary<Pawn, int> groups)
             {
                 List<List<Pawn>> result = IncidentParmsUtility.SplitIntoGroups(pawns, groups);
-                if (result.Count != 1 && RaidSpawnPatch.Current?.Pawns == pawns)
+                if (result.Count != 1 && RaidSpawnPatch.Current?.Pawns == pawns && RaidSpawnPatch.Current.Grouped == null)
                     RaidSpawnPatch.Current.Artillery = null;
                 return result;
             }

@@ -31,8 +31,11 @@ namespace RimSiege.Raids.Artillery
 
         internal static bool TryPlan(Map map, Faction faction, IntVec3 entry, IntVec3 goal,
             IEnumerable<ArtilleryPlacement> guns, IEnumerable<IntVec3> centers,
-            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> effectiveRanges, out CampPlan plan)
+            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> effectiveRanges, out CampPlan plan,
+            bool fortified, int divisions = 1)
         {
+            int coarseLimit = Math.Max(1, MaxCoarseLayouts / divisions);
+            int preciseLimit = Math.Max(1, MaxLayoutRounds / divisions);
             plan = null;
             var templates = guns.ToList();
             if (!templates.Any(g => g.IsSupport) || siting.Targets.Count == 0 || !entry.InBounds(map)) return false;
@@ -69,7 +72,7 @@ namespace RimSiege.Raids.Artillery
             float entryBearing = siting.Bearing(entry);
             // Each direction gets its main proposal before any direction gets a
             // backup. Only the finite pool receives static corridor screening.
-            while (directions.Count > 0 && selected.Count < MaxDirections)
+            while (directions.Count > 0 && selected.Count < Math.Min(MaxDirections, coarseLimit))
             {
                 Queue<Site> queue = directions.OrderByDescending(q => q.Peek().DirectCapacity)
                     .ThenByDescending(q => q.Peek().SupportCapacity).ThenBy(q => q.Peek().EntryDistance)
@@ -85,7 +88,7 @@ namespace RimSiege.Raids.Artillery
             }
             foreach (var direction in selected)
             {
-                if (candidates.Count >= MaxCoarseLayouts) break;
+                if (candidates.Count >= coarseLimit) break;
                 CampCandidate backup = Next(direction.Queue);
                 if (backup != null) candidates.Add(backup);
             }
@@ -101,8 +104,8 @@ namespace RimSiege.Raids.Artillery
                 if (candidate.SupportCount == 0 || best != null &&
                     (candidate.DirectCount < best.DirectCount || candidate.DirectCount == best.DirectCount &&
                      candidate.SupportCount < best.SupportCount)) continue;
-                if (precise >= MaxLayoutRounds) break;
-                if (ValidateAndRepair(map, faction, entry, candidate, siting, effectiveRanges, false, ref precise) &&
+                if (precise >= preciseLimit) break;
+                if (ValidateAndRepair(map, faction, entry, candidate, siting, effectiveRanges, false, ref precise, preciseLimit) &&
                     Better(candidate, best)) best = candidate;
             }
             plan = best?.Plan;
@@ -114,7 +117,7 @@ namespace RimSiege.Raids.Artillery
                 while (queue.Count > 0)
                 {
                     CampCandidate candidate = BuildCandidate(map, faction, entry, goal, queue.Dequeue(),
-                        siting, effectiveRanges, terrain, placements);
+                        siting, effectiveRanges, terrain, placements, fortified);
                     if (candidate != null) return candidate;
                 }
                 return null;
@@ -123,12 +126,13 @@ namespace RimSiege.Raids.Artillery
 
         private static CampCandidate BuildCandidate(Map map, Faction faction, IntVec3 entry, IntVec3 goal,
             Site site, CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> ranges,
-            Dictionary<IntVec3, bool> terrain, Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements)
+            Dictionary<IntVec3, bool> terrain, Dictionary<(ThingDef, ThingDef, Rot4, IntVec3), bool> placements,
+            bool fortified)
         {
-            var cover = VanillaSiegeCover.Plan(map, faction, site.Center)
+            var cover = fortified ? VanillaSiegeCover.Plan(map, faction, site.Center)
                 .Select(item => new ArtilleryPlacement { Def = item.Def, Stuff = item.Stuff,
-                    Cell = item.Cell, Rotation = item.Rotation }).ToList();
-            if (cover.Count == 0) return null;
+                    Cell = item.Cell, Rotation = item.Rotation }).ToList() : new List<ArtilleryPlacement>();
+            if (fortified && cover.Count == 0) return null;
             var field = new CampField(map, site.Center, siting.BreachAnchor, cover, terrain, placements);
             if (field.Capacity == 0) return null;
             var plan = new CampPlan { Center = field.Center, Goal = goal, Cover = field.Cover };
@@ -242,7 +246,8 @@ namespace RimSiege.Raids.Artillery
             if (siting.Targets.Count == 0) return false;
             var job = (LordJob_Artillery)raid.CampLord.LordJob;
             if (job.RequiresOperators)
-                plan.Guns.RemoveAll(g => g.NeedsOperator && (g.Operator == null || !g.Operator.Spawned || g.Operator.Map != map));
+                plan.Guns.RemoveAll(g => g.NeedsOperator && (g.Operator == null || g.Operator.Dead ||
+                    (g.Operator.Spawned ? g.Operator.Map != map : !raid.IndependentCrew || g.Operator.GetLord() != raid.CampLord)));
             var templates = plan.Guns.ToList();
             if (!templates.Any(g => g.IsSupport)) return false;
             var ranges = templates.ToDictionary(g => g, g => !g.IsSupport ? 0f : CeArtillerySight.EffectiveRange(map, raid.Faction, Spec(g)));
@@ -265,12 +270,12 @@ namespace RimSiege.Raids.Artillery
         }
 
         private static bool ValidateAndRepair(Map map, Faction faction, IntVec3 entry, CampCandidate candidate,
-            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> ranges, bool actual, ref int rounds)
+            CampSiting siting, IReadOnlyDictionary<ArtilleryPlacement, float> ranges, bool actual, ref int rounds, int limit = MaxLayoutRounds)
         {
             CampPlan plan = candidate.Plan;
             List<ArtilleryPlacement> templates = candidate.Templates;
             var repaired = new HashSet<ArtilleryPlacement>();
-            while (plan.Guns.Any(g => g.IsSupport) && rounds < MaxLayoutRounds)
+            while (plan.Guns.Any(g => g.IsSupport) && rounds < limit)
             {
                 rounds++;
                 if (!ValidateLayout(map, faction, entry, candidate, siting, ranges, actual,
@@ -280,7 +285,7 @@ namespace RimSiege.Raids.Artillery
                 var originalTemplates = templates.ToList();
                 candidate.Remove(failed);
                 int reinserted = 0;
-                if (!lostFront && (actual || failed.Count == 1) && rounds < MaxLayoutRounds)
+                if (!lostFront && (actual || failed.Count == 1) && rounds < limit)
                 {
                     for (int i = 0; i < originalGuns.Count; i++)
                     {
@@ -423,7 +428,7 @@ namespace RimSiege.Raids.Artillery
                 if (!field.Contains(interaction) || !interaction.Walkable(map) ||
                     (occupied.Contains(interaction) && !GenAdj.OccupiedRect(gun.Cell, gun.Rotation, gun.Def.Size).Contains(interaction)) || !reserved.Add(interaction))
                 { failed.Add(gun); continue; }
-                bool operated = actual && gun.NeedsOperator;
+                bool operated = actual && gun.NeedsOperator && gun.Operator?.Spawned == true;
                 IntVec3 start = operated ? gun.Operator?.Position ?? IntVec3.Invalid : entry;
                 Pawn pawn = operated ? gun.Operator : field.ConstructionWorker;
                 var blockers = new HashSet<IntVec3>(impassable);

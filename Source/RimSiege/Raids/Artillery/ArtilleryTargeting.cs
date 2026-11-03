@@ -49,7 +49,8 @@ namespace RimSiege.Raids.Artillery
             RaidWindow window = Windows.GetValue(raid, static _ => new RaidWindow());
             if (window.Candidates == null || tick >= window.NextRefreshTick || window.Candidates.Goal != raid.Camp.Goal)
             {
-                window.Candidates = new ArtilleryTargets(map, raid.Camp.Goal, SupportRoute.For(raid));
+                var catalog = map.GetComponent<ArtilleryMap>().Incident(raid.IncidentKey)?.Targets(map, tick);
+                window.Candidates = new ArtilleryTargets(map, raid.Camp.Goal, SupportRoute.For(raid), catalog);
                 window.NextRefreshTick = tick + ArtilleryTargets.SearchInterval;
             }
             return window.Candidates;
