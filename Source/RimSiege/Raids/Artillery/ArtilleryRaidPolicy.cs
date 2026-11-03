@@ -17,10 +17,9 @@ namespace RimSiege.Raids.Artillery
                 !(parms.target is Map map) || parms.faction == null || !parms.faction.HostileTo(Faction.OfPlayer))
                 return null;
 
-            // One concentrated arrival can share a camp. Grouped/distributed modes
-            // remain native until each group can own a separately budgeted battery.
-            if ((parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn &&
-                 parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeDrop) || !parms.spawnCenter.IsValid ||
+            bool grouped = IsGrouped(parms.raidArrivalMode);
+            if ((!grouped && parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeWalkIn &&
+                 parms.raidArrivalMode != PawnsArrivalModeDefOf.EdgeDrop) || (!grouped && !parms.spawnCenter.IsValid) ||
                 parms.attackTargets?.Count > 0 || parms.controllerPawn?.Faction == Faction.OfPlayer ||
                 // Explicit grouping may omit pawns: vanilla puts unlabelled
                 // members in group -1. Decline before reducing the pawn budget.
@@ -61,37 +60,62 @@ namespace RimSiege.Raids.Artillery
                 constructoids = MechBattery.RollConstructoids();
                 personnel = UnityEngine.Mathf.Max(0f, personnel - MechBattery.ConstructoidCombatPower * constructoids);
             }
-            List<ArtilleryPlacement> guns = profile.Configure(raidPoints, personnel, parms.faction);
+            List<ArtilleryPlacement> guns = profile.Configure(raidPoints, personnel, parms.faction, out float share);
+            if (IsGrouped(parms.raidArrivalMode) && kind == "Mechanoid")
+            {
+                // Reserve enough of the existing global builder budget for every possible armed group.
+                int minimum = System.Math.Min(3, guns.Count(g => g.IsSupport));
+                if (constructoids < minimum)
+                {
+                    personnel -= MechBattery.ConstructoidCombatPower * (minimum - constructoids);
+                    constructoids = minimum;
+                    float Cost(ArtilleryPlacement gun) => profile.guns.First(rule => rule.turret == gun.Def).ResolvedCost;
+                    while (guns.Count > 0 && guns.Sum(Cost) > personnel * share) guns.RemoveAt(guns.Count - 1);
+                }
+            }
             if (!guns.Any(g => g.IsSupport)) return null;
-            IntVec3 goal = GenAI.RandomRaidDest(parms.spawnCenter, map);
-            SupportRoute route = SupportRoute.Build(map, parms.spawnCenter, goal);
-            if (route == null) return null;
-            var siting = route.PlanningTargets();
-            if (siting.Targets.Count == 0) return null;
-            Dictionary<ArtilleryPlacement, float> ranges = null;
-            if (guns.Any(g => g.IsDirectSupport))
-                ranges = guns.ToDictionary(g => g, g => !g.IsSupport ? 0f : CeArtillerySight.EffectiveRange(map, parms.faction,
-                    new EmplacementSpec(g.Def, g.Stuff, g.Ammo, parms.spawnCenter, Rot4.North, null)));
-            if (!CampPlanner.TryPlan(map, parms.faction, parms.spawnCenter, goal, guns,
-                Centers(map, parms.spawnCenter, siting, guns, ranges), siting, ranges, out CampPlan camp,
-                fortified: kind == "Siege")) return null;
-
             var raid = new ArtilleryRaid
             {
                 Kind = (ArtilleryRaidKind)System.Enum.Parse(typeof(ArtilleryRaidKind), kind),
                 Phase = ArtilleryPhase.Planned, RaidPoints = raidPoints, PawnPoints = personnel,
                 Faction = parms.faction, Strategy = parms.raidStrategy, OriginalParms = parms,
-                Camp = camp, Rolled = true, Selected = true,
-                IndependentCrew = kind != "Siege",
-                ConstructoidCount = constructoids,
+                Camp = new CampPlan { Guns = guns }, Rolled = true, Selected = true,
+                IndependentCrew = kind != "Siege", ConstructoidCount = constructoids,
                 ConstructionSpeedMultiplier = profile.ConstructionSpeed(raidPoints)
             };
+            if (IsGrouped(parms.raidArrivalMode)) return raid;
+            return Plan(raid, map, parms.spawnCenter, guns) ? raid : null;
+        }
+
+        internal static bool IsGrouped(PawnsArrivalModeDef arrival) =>
+            arrival == PawnsArrivalModeDefOf.EdgeWalkInGroups || arrival?.defName == "EdgeDropGroups";
+
+        internal static bool Plan(ArtilleryRaid raid, Map map, IntVec3 entry, List<ArtilleryPlacement> guns,
+            int divisions = 1, IReadOnlyList<CampPlan> otherCamps = null, ArtilleryTargets.Catalog catalog = null)
+        {
+            IntVec3 goal = GenAI.RandomRaidDest(entry, map);
+            SupportRoute route = SupportRoute.Build(map, entry, goal);
+            if (route == null) return false;
+            var siting = route.PlanningTargets(catalog: catalog);
+            if (siting.Targets.Count == 0) return false;
+            Dictionary<ArtilleryPlacement, float> ranges = null;
+            if (guns.Any(g => g.IsDirectSupport))
+                ranges = guns.ToDictionary(g => g, g => !g.IsSupport ? 0f : CeArtillerySight.EffectiveRange(map, raid.Faction,
+                    new EmplacementSpec(g.Def, g.Stuff, g.Ammo, entry, Rot4.North, null)));
+            IEnumerable<IntVec3> centers = Centers(map, entry, siting, guns, ranges,
+                System.Math.Max(1, CampCenterAttempts / divisions));
+            if (otherCamps != null)
+                centers = centers.Where(center => otherCamps.All(other => IsoFloor.Distance3D(center, other.Center, map) >
+                    CampSupplies.Radius * 2));
+            if (!CampPlanner.TryPlan(map, raid.Faction, entry, goal, guns, centers, siting, ranges, out CampPlan camp,
+                fortified: raid.Kind == ArtilleryRaidKind.Siege, divisions: divisions)) return false;
+            raid.Camp = camp;
             SupportRoute.Set(raid, route);
-            return raid;
+            return true;
         }
 
         private static IEnumerable<IntVec3> Centers(Map map, IntVec3 entry, CampSiting siting,
-            List<ArtilleryPlacement> guns, IReadOnlyDictionary<ArtilleryPlacement, float> ranges)
+            List<ArtilleryPlacement> guns, IReadOnlyDictionary<ArtilleryPlacement, float> ranges, int attempts)
         {
             IntVec3 native = CampEntrySearch.Find(entry, map);
             var direct = guns.Where(g => g.IsDirectSupport).ToList();
@@ -134,7 +158,7 @@ namespace RimSiege.Raids.Artillery
             // Spend the same sample budget in the actual engagement band,
             // rather than relying on a few lucky cells in a large square.
             if (outer >= 0f)
-                for (int i = 0; i < CampCenterAttempts; i++)
+                for (int i = 0; i < attempts; i++)
                 {
                     var offset = UnityEngine.Vector3.forward.RotatedBy(Rand.Range(0f, 360f)) * Rand.Range(inner, outer);
                     IntVec3 cell = (center.ToVector3() + offset).ToIntVec3();

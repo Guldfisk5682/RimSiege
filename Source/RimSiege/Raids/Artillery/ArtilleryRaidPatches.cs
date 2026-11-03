@@ -65,6 +65,7 @@ namespace RimSiege.Raids.Artillery
         {
             float adjusted = IncidentWorker_Raid.AdjustedRaidPoints(points, arrival, strategy, faction, group, target, age);
             if (RaidSpawnPatch.Current == null) return adjusted;
+            RaidSpawnPatch.Current.NativePawnPoints = adjusted;
             ArtilleryRaid raid = ArtilleryRaidPolicy.Prepare(parms, points, adjusted);
             RaidSpawnPatch.Current.Artillery = raid;
             return raid?.PawnPoints ?? adjusted;
@@ -103,11 +104,23 @@ namespace RimSiege.Raids.Artillery
         {
             private static IEnumerable<MethodBase> TargetMethods() => CeAccess.Methods(typeof(RaidStrategyWorker), "MakeLordJob");
 
-            private static bool Prefix(IncidentParms parms, Map map, List<Pawn> pawns, int raidSeed, ref LordJob __result)
+            private static bool Prefix(ref IncidentParms parms, Map map, List<Pawn> pawns, int raidSeed, ref LordJob __result)
             {
-                ArtilleryRaid raid = RaidSpawnPatch.Current?.Artillery;
-                if (restoring || raid == null || raid.OriginalParms != parms || raid.CampLord != null ||
-                    pawns.Count != RaidSpawnPatch.Current.Pawns.Count) return true;
+                if (restoring) return true;
+                RaidSpawnPatch.Spawn spawn = RaidSpawnPatch.Current;
+                ArtilleryRaid raid;
+                if (spawn?.Grouped != null)
+                {
+                    raid = spawn.Grouped.ForRoster(pawns, out IncidentParms groupParms);
+                    if (groupParms != null) parms = groupParms;
+                    if (raid == null) return true;
+                }
+                else
+                {
+                    raid = spawn?.Artillery;
+                    if (raid == null || raid.OriginalParms != parms || pawns.Count != spawn.Pawns.Count) return true;
+                }
+                if (raid.CampLord != null) return true;
                 raid.RaidSeed = raidSeed;
                 map.GetComponent<ArtilleryMap>().Register(raid, pawns);
                 __result = raid.Kind == ArtilleryRaidKind.Mechanoid
@@ -124,7 +137,7 @@ namespace RimSiege.Raids.Artillery
             private static List<List<Pawn>> Split(List<Pawn> pawns, Dictionary<Pawn, int> groups)
             {
                 List<List<Pawn>> result = IncidentParmsUtility.SplitIntoGroups(pawns, groups);
-                if (result.Count != 1 && RaidSpawnPatch.Current?.Pawns == pawns)
+                if (result.Count != 1 && RaidSpawnPatch.Current?.Pawns == pawns && RaidSpawnPatch.Current.Grouped == null)
                     RaidSpawnPatch.Current.Artillery = null;
                 return result;
             }

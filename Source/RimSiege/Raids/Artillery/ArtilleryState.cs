@@ -15,6 +15,7 @@ namespace RimSiege.Raids.Artillery
     internal sealed class ArtilleryRaid : IExposable
     {
         internal int Id, Key, RaidSeed;
+        internal int IncidentKey;
         internal ArtilleryRaidKind Kind;
         internal ArtilleryPhase Phase;
         internal float RaidPoints, PawnPoints;
@@ -38,6 +39,7 @@ namespace RimSiege.Raids.Artillery
         {
             Scribe_Values.Look(ref Id, "id");
             Scribe_Values.Look(ref Key, "key");
+            Scribe_Values.Look(ref IncidentKey, "incidentKey");
             Scribe_Values.Look(ref RaidSeed, "raidSeed");
             Scribe_Values.Look(ref Kind, "kind");
             Scribe_Values.Look(ref Phase, "phase");

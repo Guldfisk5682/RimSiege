@@ -16,6 +16,7 @@ namespace RimSiege.Raids.Artillery
             internal Scope Previous;
             internal ArtilleryRaid Raid;
             internal ArtilleryMap Map;
+            internal ArtilleryIncident Incident;
         }
 
         [ThreadStatic] private static Scope current;
@@ -27,9 +28,25 @@ namespace RimSiege.Raids.Artillery
             return false;
         }
 
+        internal static bool InProgress(ArtilleryIncident incident)
+        {
+            for (Scope scope = current; scope != null; scope = scope.Previous)
+                if (scope.Incident == incident) return true;
+            return false;
+        }
+
         private static void SendOrDefer(List<string> tags, string signal)
         {
             ArtilleryRaid raid = current?.Raid;
+            ArtilleryIncident incident = current?.Incident;
+            if (incident != null && signal == "AllEnemiesDefeated")
+            {
+                incident.CompletionPending = true;
+                if (tags != null)
+                    foreach (string tag in tags)
+                        if (tag != null && !incident.CompletionTags.Contains(tag)) incident.CompletionTags.Add(tag);
+                return;
+            }
             if (raid == null || signal != "AllEnemiesDefeated")
             {
                 QuestUtility.SendQuestTargetSignals(tags, signal);
@@ -47,7 +64,8 @@ namespace RimSiege.Raids.Artillery
             private static void Prefix(Lord __instance, out Scope __state)
             {
                 ArtilleryMap map = __instance.Map?.GetComponent<ArtilleryMap>();
-                __state = new Scope { Previous = current, Map = map, Raid = map?.ForLord(__instance) };
+                __state = new Scope { Previous = current, Map = map, Raid = map?.ForLord(__instance),
+                    Incident = map?.IncidentForLord(__instance) };
                 current = __state;
             }
 
@@ -68,6 +86,7 @@ namespace RimSiege.Raids.Artillery
                 if (__state == null) return __exception;
                 current = __state.Previous;
                 if (__state.Raid != null && !InProgress(__state.Raid)) __state.Map.FinishIfEnded(__state.Raid);
+                if (__state.Incident != null && !InProgress(__state.Incident)) __state.Map.FinishIncident(__state.Incident);
                 return __exception;
             }
         }

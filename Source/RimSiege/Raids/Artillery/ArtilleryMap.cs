@@ -11,6 +11,8 @@ namespace RimSiege.Raids.Artillery
     public sealed class ArtilleryMap : MapComponent
     {
         private List<ArtilleryRaid> raids = new List<ArtilleryRaid>();
+        private List<ArtilleryIncident> incidents = new();
+        private int nextIncidentKey = 1;
         private readonly Dictionary<Pawn, ArtilleryRaid> members = new Dictionary<Pawn, ArtilleryRaid>();
         private readonly record struct GunOwner(ArtilleryRaid Raid, ArtilleryPlacement Placement);
         private readonly Dictionary<Thing, GunOwner> guns = new();
@@ -25,6 +27,33 @@ namespace RimSiege.Raids.Artillery
             raid.Members = pawns.ToList();
             raids.Add(raid);
             Index(raid);
+        }
+
+        internal void RegisterIncident(ArtilleryIncident incident)
+        {
+            incident.Key = nextIncidentKey++;
+            incident.SetupComplete = false;
+            incidents.Add(incident);
+        }
+
+        internal ArtilleryIncident Incident(int key) => incidents.FirstOrDefault(i => i.Key == key);
+        internal ArtilleryIncident IncidentForLord(Lord lord)
+        {
+            ArtilleryRaid raid = ForLord(lord);
+            return raid?.IncidentKey > 0 ? Incident(raid.IncidentKey)
+                : incidents.FirstOrDefault(i => i.NativeLords.Contains(lord));
+        }
+
+        internal void FinishIncident(ArtilleryIncident incident)
+        {
+            if (incident == null || !incident.SetupComplete || raids.Any(r => r.IncidentKey == incident.Key) ||
+                incident.NativeLords.Any(l => l != null && map.lordManager.lords.Contains(l))) return;
+            if (incident.CompletionPending && !incident.CompletionSent)
+            {
+                incident.CompletionSent = true;
+                QuestUtility.SendQuestTargetSignals(incident.CompletionTags, "AllEnemiesDefeated");
+            }
+            incidents.Remove(incident);
         }
 
         private void Index(ArtilleryRaid raid)
@@ -74,7 +103,12 @@ namespace RimSiege.Raids.Artillery
         internal void NotifyLordRemoved(Lord removed)
         {
             ArtilleryRaid raid = ForLord(removed);
-            if (raid == null) return;
+            if (raid == null)
+            {
+                ArtilleryIncident incident = incidents.FirstOrDefault(i => i.NativeLords.Remove(removed));
+                if (incident != null && !ArtilleryCompletion.InProgress(incident)) FinishIncident(incident);
+                return;
+            }
             if (raid.AssaultLord == removed)
             {
                 raid.AssaultLord = null;
@@ -102,7 +136,14 @@ namespace RimSiege.Raids.Artillery
             if (raid == null || !raids.Contains(raid) ||
                 (raid.CampLord != null && map.lordManager.lords.Contains(raid.CampLord)) ||
                 (raid.AssaultLord != null && map.lordManager.lords.Contains(raid.AssaultLord))) return;
-            if (raid.CompletionPending && !raid.CompletionSent)
+            ArtilleryIncident incident = Incident(raid.IncidentKey);
+            if (incident != null)
+            {
+                incident.CompletionPending |= raid.CompletionPending;
+                foreach (string tag in raid.CompletionTags)
+                    if (!incident.CompletionTags.Contains(tag)) incident.CompletionTags.Add(tag);
+            }
+            else if (raid.CompletionPending && !raid.CompletionSent)
             {
                 raid.CompletionSent = true;
                 QuestUtility.SendQuestTargetSignals(raid.CompletionTags, "AllEnemiesDefeated");
@@ -111,6 +152,7 @@ namespace RimSiege.Raids.Artillery
                 HandOffOrphanGuns(raid);
             SupportRoute.Invalidate(raid);
             Remove(raid);
+            FinishIncident(incident);
         }
 
         private void HandOffOrphanGuns(ArtilleryRaid raid)
@@ -163,12 +205,16 @@ namespace RimSiege.Raids.Artillery
                 ArtilleryDeployment.TryDeploy(raid);
                 FinishIfEnded(raid);
             }
+            foreach (ArtilleryIncident incident in incidents.ToList()) FinishIncident(incident);
         }
 
         public override void ExposeData()
         {
             Scribe_Collections.Look(ref raids, "rimSiegeArtilleryRaids", LookMode.Deep);
             raids ??= new List<ArtilleryRaid>();
+            Scribe_Collections.Look(ref incidents, "rimSiegeArtilleryIncidents", LookMode.Deep);
+            incidents ??= new();
+            Scribe_Values.Look(ref nextIncidentKey, "rimSiegeArtilleryNextIncidentKey", 1);
             Scribe_Collections.Look(ref orphanGuns, "rimSiegeArtilleryOrphanGuns", LookMode.Reference);
             orphanGuns ??= new List<Building>();
             orphanGuns.RemoveAll(b => b.DestroyedOrNull());

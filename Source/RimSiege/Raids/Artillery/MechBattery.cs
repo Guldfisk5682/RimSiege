@@ -32,6 +32,8 @@ namespace RimSiege.Raids.Artillery
                 if (pawn.needs?.energy != null)
                     pawn.needs.energy.CurLevel = pawn.needs.energy.MaxLevel;
                 pawns.Add(pawn);
+                if (RaidSpawnPatch.Current?.Artillery == raid)
+                    RaidSpawnPatch.Current.InjectedConstructoids.Add(pawn);
             }
         }
 

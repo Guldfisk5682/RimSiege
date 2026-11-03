@@ -10,7 +10,7 @@ namespace RimSiege.Raids.Artillery
     // Uses the native drop-cell predicate and pod contents, with camp-local constraints.
     internal static class CampSupplies
     {
-        private const int Radius = 16;
+        internal const int Radius = 16;
 
         private static HashSet<IntVec3> Reserved(Map map, CampPlan camp)
         {

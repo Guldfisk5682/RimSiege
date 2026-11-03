@@ -15,15 +15,7 @@ namespace RimSiege.Raids.Artillery
             if (!raid.IndependentCrew || raid.InfantryReleased) return;
             Lord camp = raid.CampLord;
             var toil = camp.Graph.lordToils.OfType<LordToil_Siege>().Single();
-            var specialists = new HashSet<Pawn>();
-            if (raid.Breaches)
-                specialists.UnionWith(camp.ownedPawns.Where(p => p.kindDef.isGoodBreacher));
-            if (raid.Strategy.Worker is RaidStrategyWorker_ImmediateAttackSappers)
-            {
-                Pawn sapper = camp.ownedPawns.FirstOrDefault(SappersUtility.IsGoodSapper)
-                    ?? camp.ownedPawns.FirstOrDefault(SappersUtility.IsGoodBackupSapper);
-                if (sapper != null) specialists.Add(sapper);
-            }
+            HashSet<Pawn> specialists = Specialists(raid.Strategy, camp.ownedPawns);
 
             var crew = new HashSet<Pawn>();
             if (((LordJob_Artillery)camp.LordJob).RequiresOperators)
@@ -53,6 +45,22 @@ namespace RimSiege.Raids.Artillery
             raid.InfantryReleased = true;
             ArtilleryCamp.TransferToAssault(raid, camp, camp.ownedPawns.Where(p => !crew.Contains(p)).ToList());
             TryDeploy(raid);
+        }
+
+        internal static HashSet<Pawn> Specialists(RaidStrategyDef strategy, IEnumerable<Pawn> roster)
+        {
+            var pawns = roster.ToList();
+            var specialists = new HashSet<Pawn>();
+            if (strategy.Worker is RaidStrategyWorker_ImmediateAttackBreaching)
+                specialists.UnionWith(pawns.Where(p => p.kindDef.isGoodBreacher));
+            if (strategy.Worker is RaidStrategyWorker_ImmediateAttackSappers)
+            {
+                Pawn sapper = pawns.FirstOrDefault(SappersUtility.IsGoodSapper)
+                    ?? pawns.FirstOrDefault(SappersUtility.IsGoodBackupSapper);
+                if (sapper != null) specialists.Add(sapper);
+            }
+
+            return specialists;
         }
 
         internal static void PawnArrived(Pawn pawn, Map map)
